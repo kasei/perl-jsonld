@@ -68,7 +68,6 @@ package JSONLD {
 	sub _is_iri {
 		my $self	= shift;
 		my $value	= shift;
-		Carp::cluck Dumper($value);
 		my $i		= eval { IRI->new(value => $value) };
 		my $err		= $@;
 		my $is_iri	= not($@);
@@ -437,13 +436,13 @@ package JSONLD {
 			# 17
 			println "17" if $debug;
 			my ($prefix, $suffix)	= split(/:/, $term, 2);
-			if (exists $localCtx->{terms}{$prefix}) {
+			if (exists $localCtx->{$prefix}) {
 				println "17.1" if $debug;
 				$self->_4_2_2_create_term_definition($activeCtx, $localCtx, $prefix, $defined); # 17.1
 			}
 			if (exists $activeCtx->{terms}{$prefix}) {
 				println "17.2" if $debug;
-				$definition->{iri_mapping}	= $activeCtx->{terms}{$prefix} . $suffix; # 17.2
+				$definition->{iri_mapping}	= $activeCtx->{terms}{$prefix}{iri_mapping} . $suffix; # 17.2
 			} else {
 				println "17.3" if $debug;
 				$definition->{iri_mapping}	= $term; # 17.3
@@ -527,7 +526,8 @@ package JSONLD {
 		println "29" if $debug;
 		$activeCtx->{terms}{$term}	= $definition; # 29
 		$defined->{$term}	= 1; # 29
-		println "returning from _4_2_2_create_term_definition" if $debug;
+		local($Data::Dumper::Indent)	= 0;
+		println "returning from _4_2_2_create_term_definition: " . Dumper($activeCtx->{terms}{$term});
 		return;
 	}
 	
