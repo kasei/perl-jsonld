@@ -176,7 +176,6 @@ package JSONLD {
 					die 'invalid @version value'; # 5.5.1
 				}
 				println "5.5.2 TODO" if $debug;
-				println "5.5.3 TODO" if $debug;
 			}
 
 			if (exists $context->{'@import'}) {
@@ -318,49 +317,60 @@ package JSONLD {
 		println "11" if $debug;
 		my $definition	= {};	# 11
 		
-		if ($value->{'@protected'} // $protected) {
+		if ($value->{'@protected'}) {
 			println "12" if $debug;
 			$definition->{protected}	= 1; # 12
+			println "12 TODO processing mode of json-ld-1.0" if $debug;
+		} elsif (not exists $value->{'@protected'} and $protected) {
+			println "13" if $debug;
+			$definition->{protected}	= 1; # 13
 		}
 
 		if (exists $value->{'@type'}) {
-			# 13
-			println "13" if $debug;
-			my $type	= $value->{'@type'}; # 13.1
+			# 14
+			println "14" if $debug;
+			my $type	= $value->{'@type'}; # 14.1
 			if (ref($type)) {
-				println "13.1" if $debug;
-				die "invalid_type_mapping"; # 13.1
+				println "14.1" if $debug;
+				die "invalid_type_mapping"; # 14.1
 			}
 			
-			$type	= $self->_5_2_2_iri_expansion($activeCtx, $type, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
+			println "14.2" if $debug;
+			$type	= $self->_5_2_2_iri_expansion($activeCtx, $type, vocab => 1, localCtx => $localCtx, 'defined' => $defined); # 14.2
+
+			if (($type eq '@json' or $type eq '@none') and $self->processing_mode eq 'json-ld-1.0') {
+				println "14.3" if $debug;
+				die 'invalid type mapping';
+			}
+
 			if ($type ne '@id' and $type ne '@vocab' and not($self->_is_abs_iri($type))) {
 				# TODO: handle case "nor, if processing mode is json-ld-1.1, @json nor @none"
-				println "13.2" if $debug;
-				die 'invalid type mapping'; # 13.2
+				println "14.4" if $debug;
+				die 'invalid type mapping'; # 14.4
 			}
 			
-			println "13.3" if $debug;
-			$definition->{type_mapping}	= $type; # 13.3
+			println "14.5" if $debug;
+			$definition->{type_mapping}	= $type; # 14.5
 		}
 		
 		if (exists $value->{'@reverse'}) {
-			# 14
-			println "14" if $debug;
+			# 15
+			println "15" if $debug;
 			if (exists $value->{'@id'} or exists $value->{'@nest'}) {
-				println "14.1" if $debug;
-				die 'invalid reverse property'; # 14.1
+				println "15.1" if $debug;
+				die 'invalid reverse property'; # 15.1
 			}
 			my $reverse	= $value->{'@reverse'};
 			if (ref($reverse)) {
-				println "14.2" if $debug;
-				die 'invalid IRI mapping'; # 14.2
+				println "15.2" if $debug;
+				die 'invalid IRI mapping'; # 15.2
 			}
 			if (substr($reverse, 0, 1) eq '@') {
-				println "14.3" if $debug;
-				die '@reverse value looks like a keyword: ' . $reverse; # 14.3
+				println "15.3" if $debug;
+				die '@reverse value looks like a keyword: ' . $reverse; # 15.3
 			} else {
-				 # 14.4
-				println "14.4" if $debug;
+				 # 15.4
+				println "15.4" if $debug;
 				my $m	= $self->_5_2_2_iri_expansion($activeCtx, $reverse, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
 				if (not($self->_is_abs_iri($m)) and $m !~ /^:/) {
 					die 'invalid IRI mapping';
@@ -369,8 +379,8 @@ package JSONLD {
 			}
 			
 			if (exists $value->{'@container'}) {
-				# 14.5
-				println "14.5" if $debug;
+				# 15.5
+				println "15.5" if $debug;
 				my $c	= $value->{'@container'};
 				if ($c ne '@set' and $c ne '@index' and not(defined($c))) {
 					die 'invalid reverse property';
@@ -378,11 +388,11 @@ package JSONLD {
 				$definition->{container_mapping}	= $c;
 			}
 			
-			println "14.6" if $debug;
-			$definition->{'reverse'}	= 1; # 14.6
+			println "15.6" if $debug;
+			$definition->{'reverse'}	= 1; # 15.6
 			
-			# 14.7
-			println "14.7" if $debug;
+			# 15.7
+			println "15.7" if $debug;
 			$activeCtx->{terms}{$term}	= $definition;
 			$defined->{$term}	= 1;
 			local($Data::Dumper::Indent)	= 0;
@@ -390,27 +400,27 @@ package JSONLD {
 			return;
 		}
 
-		println "15" if $debug;
+		println "16" if $debug;
 		$definition->{'reverse'}	= 0; # 15
 		
 		if (exists $value->{'@id'} and $value->{'@id'} ne $term) {
-			# 16
-			println "16" if $debug;
+			# 17
+			println "17" if $debug;
 			my $id	= $value->{'@id'};
 			if (exists $value->{'@id'} and not(defined($id))) {
-				println "16.1" if $debug;
-				# 16.1
+				println "17.1" if $debug;
+				# 17.1
 			} elsif (ref($id)) {
-				println "16.2" if $debug;
-				die 'invalid IRI mapping'; # 16.2
+				println "17.2" if $debug;
+				die 'invalid IRI mapping'; # 17.2
 			}
 			
 			if (not exists $keywords{$id} and substr($id, 0, 1) eq '@') {
-				println "16.3" if $debug;
-				die 'create term definition encountered an @id that looks like a keyword: ' . $id; # 16.3
+				println "17.3" if $debug;
+				die 'create term definition encountered an @id that looks like a keyword: ' . $id; # 17.3
 			} else {
-				# 16.4
-				println "16.4" if $debug;
+				# 17.4
+				println "17.4" if $debug;
 				my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $id, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
 				if (not exists $keywords{$iri} and not $self->_is_abs_iri($iri) and $iri !~ /:/) {
 					die 'invalid IRI mapping';
@@ -421,41 +431,41 @@ package JSONLD {
 				$definition->{iri_mapping}	= $iri;
 			}
 			if ($term =~ /:./) {
-				println "16.5" if $debug;
+				println "17.5" if $debug;
 				my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $term, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
 				if ($iri ne $definition->{iri_mapping}) {
-					die 'invalid IRI mapping'; # 16.5 ; NOTE: the text here doesn't discuss what parameters to pass to IRI expansion
+					die 'invalid IRI mapping'; # 17.5 ; NOTE: the text here doesn't discuss what parameters to pass to IRI expansion
 				}
 			}
 			
-			if ($term !~ /:/ and $simple_term and $definition->{iri_mapping} =~ m{[][:/?#@]$}) {
-				println "16.6" if $debug;
-				$definition->{prefix}	= 1; # 16.6
+			if ($term !~ m{[:/]} and $simple_term and $definition->{iri_mapping} =~ m{[][:/?#@]$}) {
+				println "17.6" if $debug;
+				$definition->{prefix}	= 1; # 17.6
 			}
 		} elsif ($term =~ /:/) {
-			# 17
-			println "17" if $debug;
+			# 18
+			println "18" if $debug;
 			my ($prefix, $suffix)	= split(/:/, $term, 2);
 			if (exists $localCtx->{$prefix}) {
-				println "17.1" if $debug;
-				$self->_4_2_2_create_term_definition($activeCtx, $localCtx, $prefix, $defined); # 17.1
+				println "18.1" if $debug;
+				$self->_4_2_2_create_term_definition($activeCtx, $localCtx, $prefix, $defined); # 18.1
 			}
 			if (exists $activeCtx->{terms}{$prefix}) {
-				println "17.2" if $debug;
-				$definition->{iri_mapping}	= $activeCtx->{terms}{$prefix}{iri_mapping} . $suffix; # 17.2
+				println "18.2" if $debug;
+				$definition->{iri_mapping}	= $activeCtx->{terms}{$prefix}{iri_mapping} . $suffix; # 18.2
 			} else {
-				println "17.3" if $debug;
-				$definition->{iri_mapping}	= $term; # 17.3
+				println "18.3" if $debug;
+				$definition->{iri_mapping}	= $term; # 18.3
 			}
 		} elsif ($term =~ m{/}) {
-			# TODO: new 19
-			println "19(new) TODO" if $debug;
+			# TODO: 19
+			println "19 TODO" if $debug;
 		} elsif ($term eq '@type') {
-			println "18" if $debug;
-			$definition->{iri_mapping}	= '@type'; # 18
+			println "20" if $debug;
+			$definition->{iri_mapping}	= '@type'; # 20
 		} else {
-			# 19 ; NOTE: this section uses a passive voice "the IRI mapping of definition is set to ..." cf. 18 where it's active: "set the IRI mapping of definition to @type"
-			println "19" if $debug;
+			# 21 ; NOTE: this section uses a passive voice "the IRI mapping of definition is set to ..." cf. 18 where it's active: "set the IRI mapping of definition to @type"
+			println "21" if $debug;
 			if (exists $activeCtx->{'@vocab'}) {
 				$definition->{iri_mapping}	= $activeCtx->{'@vocab'} . $term;
 			} else {
@@ -464,41 +474,41 @@ package JSONLD {
 		}
 		
 		if (exists $value->{'@container'}) {
-			# TODO: 20
-			println "20 TODO" if $debug;
-		}
-
-		if (exists $value->{'@index'}) {
-			# TODO: 21
-			println "21 TODO" if $debug;
-		}
-
-		if (exists $value->{'@context'}) {
 			# TODO: 22
 			println "22 TODO" if $debug;
 		}
 
-		if (exists $value->{'@language'} and not exists $value->{'@type'}) {
+		if (exists $value->{'@index'}) {
 			# TODO: 23
 			println "23 TODO" if $debug;
 		}
 
-		if (exists $value->{'@direction'} and not exists $value->{'@type'}) {
+		if (exists $value->{'@context'}) {
 			# TODO: 24
 			println "24 TODO" if $debug;
 		}
 
-		if (exists $value->{'@nest'}) {
+		if (exists $value->{'@language'} and not exists $value->{'@type'}) {
 			# TODO: 25
 			println "25 TODO" if $debug;
 		}
 
-		if (exists $value->{'@prefix'}) {
+		if (exists $value->{'@direction'} and not exists $value->{'@type'}) {
 			# TODO: 26
 			println "26 TODO" if $debug;
+		}
+
+		if (exists $value->{'@nest'}) {
+			# TODO: 27
+			println "27 TODO" if $debug;
+		}
+
+		if (exists $value->{'@prefix'}) {
+			# TODO: 28
+			println "28 TODO" if $debug;
 # 			if ($self->processing_mode eq 'json-ld-1.0' or $term =~ /:/) {
-# 				println "26.1" if $debug;
-# 				die 'invalid term definition'; # 26.1
+# 				println "28.1" if $debug;
+# 				die 'invalid term definition'; # 28.1
 # 			}
 # 			
 # 			$definition->{prefix}	= $value->{'@prefix'};
@@ -507,25 +517,26 @@ package JSONLD {
 
 		my @keys	= grep { not /^[@](id|reverse|container|context|language|nest|prefix|type)$/ } keys %$value;
 		if (scalar(@keys)) {
-			die 'invalid term definition'; # 27
+			die 'invalid term definition'; # 29
 		}
 		
 		if (not($override_protected) and $previous_defn->{protected}) {
-			# 28
-			println "28" if $debug;
+			# 30
+			println "30" if $debug;
 			my %cmp_a	= map { $_ => $definition->{$_} } grep { $_ ne 'protected' } keys %$definition;
 			my %cmp_b	= map { $_ => $previous_defn->{$_} } grep { $_ ne 'protected' } keys %$previous_defn;
 			my $j		= JSON->new->canonical(1);
 			if ($j->encode(\%cmp_a) ne $j->encode(\%cmp_b)) {
-				println "28.1" if $debug;
-				die 'protected term redefinition'; # 28.1
+				println "30.1" if $debug;
+				die 'protected term redefinition'; # 30.1
 			}
-			$definition	= $previous_defn;
+			println "30.2" if $debug;
+			$definition	= $previous_defn; # 30.2
 		}
 		
-		println "29" if $debug;
-		$activeCtx->{terms}{$term}	= $definition; # 29
-		$defined->{$term}	= 1; # 29
+		println "31" if $debug;
+		$activeCtx->{terms}{$term}	= $definition; # 31
+		$defined->{$term}	= 1; # 31
 		local($Data::Dumper::Indent)	= 0;
 		println "returning from _4_2_2_create_term_definition: " . Dumper($activeCtx->{terms}{$term});
 		return;
@@ -718,12 +729,12 @@ package JSONLD {
 					# NOTE: another case of an "Otherwise" applying to a partial conjunction
 					if ($expandedProperty eq '@id') {
 						if (ref($value)) {
-							println "13.4.3 invalid";
+							println "13.4.4 invalid";
 							die 'invalid @id value';
 						} else {
-							println "13.4.3" if $debug;
+							println "13.4.4" if $debug;
 							$expandedValue	= $self->_5_2_2_iri_expansion($activeCtx, $value, documentRelative => 1);
-							println "13.4.3 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+							println "13.4.4 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 						}
 					}
 
@@ -732,11 +743,11 @@ package JSONLD {
 						my $is_array	= ref($value) eq 'ARRAY';
 						my $is_array_of_strings	= ($is_array and all { not(ref($_)) } @$value);
 						if (not($is_string) and not($is_array_of_strings)) {
-							println "13.4.4 invalid";
+							println "13.4.5 invalid";
 							die 'invalid type value';
 						} else {
-							# 13.4.4
-							println "13.4.4" if $debug;
+							# 13.4.5
+							println "13.4.5" if $debug;
 							if ($is_string) {
 								$expandedValue	= $self->_5_2_2_iri_expansion($type_scoped_ctx, $value, vocab => 1, documentRelative => 1);
 							} else {
@@ -754,19 +765,19 @@ package JSONLD {
 					}
 
 					if ($expandedProperty eq '@graph') {
-						println "13.4.5" if $debug;
-						my $v	= $self->_expand($activeCtx, '@graph', $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.5
+						println "13.4.6" if $debug;
+						my $v	= $self->_expand($activeCtx, '@graph', $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.6
 						# TODO: ensure that expanded value is an array of one or more maps
 						$expandedValue	= $v;
 					}
 
 					if ($expandedProperty eq '@included' and $self->processing_mode eq 'json-ld-1.1') {
-						# TODO: 13.4.6
-						println "13.4.6 TODO" if $debug;
+						# TODO: 13.4.7
+						println "13.4.7 TODO" if $debug;
 					} elsif ($expandedProperty eq '@value') {
-						println "13.4.7" if $debug;
+						println "13.4.8" if $debug;
 						if ($self->processing_mode eq 'json-ld-1.1' and $input_type eq '@json') {
-							$expandedValue	= $value; # 13.4.7
+							$expandedValue	= $value; # 13.4.8
 						} elsif (ref($value) or not(defined($value))) {
 							die 'invalid value object value';
 						} else {
@@ -783,81 +794,81 @@ package JSONLD {
 
 					# NOTE: again with the "Otherwise" that seems to apply to only half the conjunction
 					if ($expandedProperty eq '@language') {
-						println "13.4.8" if $debug;
+						println "13.4.9" if $debug;
 						if (ref($value)) {
 							die 'invalid language-tagged string';
 						}
-						$expandedValue	= $value; # 13.4.8
+						$expandedValue	= $value; # 13.4.9
 						if ($frameExpansion) {
-							println "13.4.8 TODO: frameExpansion support"
+							println "13.4.9 TODO: frameExpansion support"
 						}
 					}
 
 					if ($expandedProperty eq '@direction' and $value ne 'ltr' and $value ne 'rtl') {
-						# TODO: 13.4.9
-						println "13.4.9 TODO" if $debug;
-					}
-
-					if ($expandedProperty eq '@index' and ref($value)) {
 						# TODO: 13.4.10
 						println "13.4.10 TODO" if $debug;
 					}
 
-					if ($expandedProperty eq '@list') {
+					if ($expandedProperty eq '@index' and ref($value)) {
 						# TODO: 13.4.11
 						println "13.4.11 TODO" if $debug;
 					}
 
-					if ($expandedProperty eq '@set') {
+					if ($expandedProperty eq '@list') {
 						# TODO: 13.4.12
 						println "13.4.12 TODO" if $debug;
 					}
 
-					# NOTE: the language here is really confusing. the first conditional in 13.4.13 is the conjunction "expanded property is @reverse and value is not a map".
-					#       however, by context it seems that really everything under 13.4.13 assumes expanded property is @reverse, and the first branch is dependent only on 'value is not a map'.
+					if ($expandedProperty eq '@set') {
+						# TODO: 13.4.13
+						println "13.4.13 TODO" if $debug;
+					}
+
+					# NOTE: the language here is really confusing. the first conditional in 13.4.14 is the conjunction "expanded property is @reverse and value is not a map".
+					#       however, by context it seems that really everything under 13.4.14 assumes expanded property is @reverse, and the first branch is dependent only on 'value is not a map'.
 					if ($expandedProperty eq '@reverse') {
-						println "13.4.13" if $debug;
+						println "13.4.14" if $debug;
 						if (ref($value) ne 'HASH') {
 							die 'invalid @reverse value';
 						} else {
-							println "13.4.13.1" if $debug;
-							$expandedValue	= $self->_expand($activeCtx, '@reverse', $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.13.1
+							println "13.4.14.1" if $debug;
+							$expandedValue	= $self->_expand($activeCtx, '@reverse', $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.14.1
 							
 							if (exists $expandedValue->{'@reverse'}) {
-								println "13.4.13.2 TODO" if $debug;
+								println "13.4.14.2 TODO" if $debug;
 							}
 							
 							my @keys	= grep { $_ ne '@reverse' } keys %$expandedValue;
 							if (scalar(@keys)) {
-								println "13.4.13.3 TODO" if $debug;
+								println "13.4.14.3 TODO" if $debug;
 							}
 							
-							println "13.4.13.4 going to next element key" if $debug;
-							next; # 13.4.13.4
+							println "13.4.14.4 going to next element key" if $debug;
+							next; # 13.4.14.4
 						}
 					}
 
 					if ($expandedProperty eq '@nest') {
-						# TODO: 13.4.14
-						println "13.4.14 TODO" if $debug;
+						# TODO: 13.4.15
+						println "13.4.15 TODO" if $debug;
 					}
 
 					if ($frameExpansion) {
 						my %other_framings	= map { $_ => 1 } qw(@explicit @default @embed @explicit @omitDefault @requireAll);
 						if ($other_framings{$expandedProperty}) {
-							println "13.4.15" if $debug;
-							$expandedValue	= $self->_expand($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.15
+							println "13.4.16" if $debug;
+							$expandedValue	= $self->_expand($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.16
 						}
 					}
 					
 					unless (not(defined($expandedValue)) and $expandedProperty eq '@value' and $input_type eq '@json') {
-						println "13.4.16 setting " . Data::Dumper->Dump([$expandedValue], ['*expandedProperty']) if $debug;
+						println "13.4.17 setting " . Data::Dumper->Dump([$expandedValue], ['*expandedProperty']) if $debug;
 # 						println "$expandedProperty expanded value is " . Dumper($expandedValue);
-						$result->{$expandedProperty}	= $expandedValue; # 13.4.16
+						$result->{$expandedProperty}	= $expandedValue; # 13.4.17
 					}
 
-					println "13.4.17 going to next element key" if $debug;
-					next; # 13.4.17
+					println "13.4.18 going to next element key" if $debug;
+					next; # 13.4.18
 				}
 
 				my $tdef	= $self->_ctx_term_defn($activeCtx, $key);
