@@ -76,6 +76,28 @@ package JSONLD {
 		}
 		return $is_iri;
 	}
+
+	sub _cm_contains {
+		my $self	= shift;
+		my $container_mapping	= shift;
+		my $value	= shift;
+		if (ref($container_mapping)) {
+			Carp::cluck unless (ref($container_mapping) eq 'ARRAY');
+			return any { $_ eq $value } @$container_mapping;
+		} else {
+			return ($container_mapping eq $value);
+		}
+	}
+	
+	sub _cm_contains_any {
+		my $self	= shift;
+		my $container_mapping	= shift;
+		my @values	= shift;
+		foreach my $value (@values) {
+			return 1 if ($self->_cm_contains($container_mapping, $value));
+		}
+		return 0;
+	}
 	
 	sub _ctx_term_defn {
 		my $self	= shift;
@@ -183,7 +205,25 @@ package JSONLD {
 			}
 			
 			if (exists $context->{'@base'} and scalar(@$remote_contexts) == 0) {
-				println "5.7 TODO" if $debug;
+				println "5.7" if $debug;
+				println "5.7.1" if $debug;
+				my $value	= $context->{'@base'};
+				
+				if (not defined($value)) {
+					println "5.7.2" if $debug;
+					delete $result->{'@base'};
+				} elsif ($self->_is_abs_iri($value)) {
+					println "5.7.3" if $debug;
+					$result->{'@base'}	= $value;
+				} elsif ($self->_is_iri($value) and defined($result->{'@base'})) {
+					println "5.7.4" if $debug;
+					my $base	= IRI->new($result->{'@base'});
+					my $i	= IRI->new(value => $value, base => $base);
+					$result->{'@base'}	= $i->abs;
+				} else {
+					println "5.7.5" if $debug;
+					die 'invalid base IRI';
+				}
 			}
 			
 			if (exists $context->{'@vocab'}) {
@@ -475,7 +515,36 @@ package JSONLD {
 		
 		if (exists $value->{'@container'}) {
 			# TODO: 22
-			println "22 TODO" if $debug;
+			println "22" if $debug;
+
+			println "22.1 TODO handle testing for invalid container mapping error" if $debug;
+			my $container	= $value->{'@container'}; # 22.1
+			my %acceptable	= map { $_ => 1 } qw(@graph @id @index @language @list @set @type);
+			# TODO 22.1 error checking
+			
+			if ($self->processing_mode eq 'json-ld-1.0') {
+				if (any { $container eq $_ } qw (@graph @id @type) or ref($container)) {
+					println "22.2" if $debug;
+					die 'invalid container mapping';
+				}
+			}
+			
+			println "22.3" if $debug;
+			$definition->{container_mapping}	= $container; # 22.3
+			
+			if ($container eq '@type') {
+				println "22.4" if $debug;
+				if (not defined($definition->{type_mapping})) {
+					println "22.4.1" if $debug;
+					$definition->{type_mapping}	= '@id';
+				}
+				
+				my $tm	= $definition->{type_mapping};
+				if ($tm ne '@id' and $tm ne '@vocab') {
+					println "22.4.2" if $debug;
+					die 'invalid type mapping';
+				}
+			}
 		}
 
 		if (exists $value->{'@index'}) {
@@ -546,11 +615,12 @@ package JSONLD {
 		my $self		= shift;
 		my $activeCtx	= shift;
 		my $activeProp	= shift;
+		my $element		= shift;
 		println "ENTER    =================> _5_1_2_expansion('$activeProp')" if $debug;
 		my $__indent	= indent();
 		local($Data::Dumper::Indent)	= 0;
-		println Dumper($activeCtx) if $debug;
-		my $element		= shift;
+		println(Data::Dumper->Dump([$activeCtx], ['*activeCtx'])) if $debug;
+		println(Data::Dumper->Dump([$element], ['*element'])) if $debug;
 		my $frameExpansion	= shift // 0;
 		my $ordered		= shift // 0;
 		my $fromMap		= shift // 0;
@@ -600,8 +670,9 @@ package JSONLD {
 				my $expandedItem	= $self->_expand($activeCtx, $activeProp, $item); # 5.2.1
 				
 				# NOTE: 5.2.2 "container mapping" is in the term definition for active property, right? The text omits the term definition reference.
-				my $cmapping	= $tdef->{container_mapping};
-				if (exists $cmapping->{'@list'} and ref($expandedItem) eq 'ARRAY') {
+				my $container_mapping	= $tdef->{container_mapping};
+#				if (any { $_ eq '@list'} @$container_mapping and ref($expandedItem) eq 'ARRAY') {
+				if ($self->_cm_contains($container_mapping, '@list')  and ref($expandedItem) eq 'ARRAY') {
 					println "5.2.2" if $debug;
 					$expandedItem	= { '@list' => $expandedItem }; # 5.2.2
 				}
@@ -776,19 +847,27 @@ package JSONLD {
 						println "13.4.7 TODO" if $debug;
 					} elsif ($expandedProperty eq '@value') {
 						println "13.4.8" if $debug;
-						if ($self->processing_mode eq 'json-ld-1.1' and $input_type eq '@json') {
-							$expandedValue	= $value; # 13.4.8
-						} elsif (ref($value) or not(defined($value))) {
+						if ($input_type eq '@json') {
+							println "13.4.8.1" if $debug;
+							$expandedValue	= $value; # 13.4.8.1
+							if ($self->processing_mode eq 'json-ld-1.0') {
+								die 'invalid value object value';
+							}
+						} elsif (ref($value) and defined($value)) {
+							println "13.4.8.2" if $debug; # NOTE: the language here is ambiguous: "if value is not a scalar or null"
 							die 'invalid value object value';
 						} else {
+							println "13.4.8.3" if $debug;
 							$expandedValue	= $value;
 						}
 						
 						unless (defined($expandedValue)) {
+							println "13.4.8.4" if $debug;
 							$result->{'@value'}	= undef;
 							next;
 						}
 						
+						println "13.4.8.5 TODO" if $debug;
 						# TODO: handle frameExpansion?
 					}
 
@@ -874,16 +953,17 @@ package JSONLD {
 				my $tdef	= $self->_ctx_term_defn($activeCtx, $key);
 				println "13.5" if $debug;
 				my $container_mapping	= $tdef->{container_mapping}; # 13.5
-
 				if (exists($tdef->{type_mapping}) and $tdef->{type_mapping} eq '@json') {
 					println "13.6" if $debug;
 					$expandedValue	= { '@value' => $value, '@type' => '@json' }; # 13.6
 				}
 			
-				if (exists $container_mapping->{'@language'} and ref($value) eq 'HASH') {
+# 				if (exists $container_mapping->{'@language'} and ref($value) eq 'HASH') {
+				if ($self->_cm_contains($container_mapping, '@language') and ref($value) eq 'HASH') {
 					# TODO: 13.7
 					println "13.7 TODO" if $debug;
-				} elsif ((exists $container_mapping->{'@index'} or exists $container_mapping->{'@type'} or exists $container_mapping->{'@id'}) and ref($value) eq 'HASH') {
+# 				} elsif ((exists $container_mapping->{'@index'} or exists $container_mapping->{'@type'} or exists $container_mapping->{'@id'}) and ref($value) eq 'HASH') {
+				} elsif ($self->_cm_contains_any($container_mapping, '@index', '@type', '@id') and ref($value) eq 'HASH') {
 					# TODO: 13.8
 					println "13.8 TODO" if $debug;
 				} else {
@@ -896,14 +976,16 @@ package JSONLD {
 					next; # 13.10
 				}
 			
-				if (exists $container_mapping->{'@list'} and not (ref($expandedValue) eq 'HASH' and exists $expandedValue->{'@list'})) {
+# 				if (exists $container_mapping->{'@list'} and not (ref($expandedValue) eq 'HASH' and exists $expandedValue->{'@list'})) {
+				if ($self->_cm_contains($container_mapping, '@list') and not (ref($expandedValue) eq 'HASH' and exists $expandedValue->{'@list'})) {
 					# 13.11
 					println "13.11" if $debug;
 					my @values	=  (ref($expandedValue) eq 'ARRAY') ? @$expandedValue : $expandedValue;
 					$expandedValue	= { '@list' => \@values };
 				}
 
-				if (exists $container_mapping->{'@graph'}) {
+# 				if (exists $container_mapping->{'@graph'}) {
+				if ($self->_cm_contains($container_mapping, '@graph')) {
 					# 13.12
 					println "13.12" if $debug;
 					if (ref($expandedValue) ne 'ARRAY') {
@@ -937,8 +1019,14 @@ package JSONLD {
 					$result->{$expandedProperty}	//= []; # 13.14.1
 
 					println "13.14.2" if $debug;
-					push(@{$result->{$expandedProperty}}, @$expandedValue); # 13.14.2
-# 					println "Pushed expanded value for $expandedProperty: " . Dumper(@$expandedValue);
+					if (ref($expandedValue) eq 'ARRAY') {
+						warn Dumper($result->{$expandedProperty});
+						push(@{$result->{$expandedProperty}}, @$expandedValue); # 13.14.2
+					} elsif (ref($expandedValue)) {
+						# NOTE: I'm assuming that this is the intention of 13.14.2,
+						# but it isn't actually spelled out in the spec text.
+						push(@{$result->{$expandedProperty}}, $expandedValue); # 13.14.2
+					}
 				}
 			
 				foreach my $nesting_key (keys %$nests) {
@@ -1025,7 +1113,8 @@ package JSONLD {
 
 		if (not(defined($activeProp)) or $activeProp eq '@graph') {
 			# 18
-			println "18" if $debug;
+			local($Data::Dumper::Indent)	= 0;
+			println "18 " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 			if (scalar(@keys) == 0 or exists $result->{'@value'} or exists $result->{'@list'}) {
 				println "18.1" if $debug;
 				$result	= undef; # 18.1
@@ -1038,7 +1127,8 @@ package JSONLD {
 			}
 		}
 		
-		println "19 returning from _5_1_2_expansion with final value" if $debug;
+		local($Data::Dumper::Indent)	= 0;
+		println "19 returning from _5_1_2_expansion with final value " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 		return $result; # 19
 	}
 	
@@ -1127,7 +1217,7 @@ package JSONLD {
 		} elsif ($documentRelative) {
 			# 8
 			println "8" if $debug;
-			my $base = $self->base_iri;
+			my $base = $activeCtx->{'@base'} // $self->base_iri;
 			my $i = IRI->new(value => $value, base => $base);
 			$value	= $i->abs;
 		}
