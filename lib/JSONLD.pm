@@ -85,7 +85,7 @@ package JSONLD {
 			Carp::cluck unless (ref($container_mapping) eq 'ARRAY');
 			return any { $_ eq $value } @$container_mapping;
 		} else {
-			return ($container_mapping eq $value);
+			return (defined($container_mapping) and $container_mapping eq $value);
 		}
 	}
 	
@@ -115,6 +115,13 @@ package JSONLD {
 			return 1 if $term->{protected};
 		}
 		return 0;
+	}
+	
+	sub _is_list_object {
+		my $self	= shift;
+		my $value	= shift;
+		return 0 unless (ref($value) eq 'HASH');
+		return (exists $value->{'@list'});
 	}
 	
 	sub _4_1_2_ctx_processing {
@@ -256,19 +263,17 @@ package JSONLD {
 			my $defined	= {}; # 5.12
 			
 			my @keys	= grep { $_ !~ /^[@](base|direction|import|language|propagate|protected|version|vocab)$/ } keys %$context;
+			println "5.13" if $debug;
 			foreach my $key (@keys) {
+				my $__indent	= indent();
 				println "5.13 [$key]" if $debug;
 				my $value	= $context->{$key};
 				$self->_4_2_2_create_term_definition($result, $context, $key, $defined, protected => $context->{'@protected'}, propagate => $propagate); # 5.13
 			}
 		}
 
-		println "6 returning from _4_1_2_ctx_processing with final value" if $debug;
-		if ($debug) {
-			println("context after processing:");
-			println(Dumper($result));
-		}
-		
+		local($Data::Dumper::Indent)	= 1;
+		println "6 returning from _4_1_2_ctx_processing with " . Data::Dumper->Dump([$result], ['final_context']) if $debug;
 		return $result; # 6
 	}
 		
@@ -323,7 +328,10 @@ package JSONLD {
 				die 'keyword redefinition';
 			}
 			if (substr($term, 0, 1) eq '@') {
-				die "create term definition attempted on a term that looks like a keyword: $term";
+				# https://www.w3.org/2018/json-ld-wg/Meetings/Minutes/2019/2019-09-20-json-ld#section5-2
+				warn "create term definition attempted on a term that looks like a keyword: $term";
+				println "5 returning so as to ignore a term that has the form of a keyword: $term";
+				return;
 			}
 		}
 		
@@ -517,10 +525,28 @@ package JSONLD {
 			# TODO: 22
 			println "22" if $debug;
 
-			println "22.1 TODO handle testing for invalid container mapping error" if $debug;
+			println "22.1" if $debug;
 			my $container	= $value->{'@container'}; # 22.1
+
+			# 22.1 error checking
 			my %acceptable	= map { $_ => 1 } qw(@graph @id @index @language @list @set @type);
-			# TODO 22.1 error checking
+			if (exists $acceptable{$container}) {
+			} elsif (ref($container) eq 'ARRAY') {
+				if (scalar(@$container) == 1) {
+					my ($c)	= @$container;
+					unless (exists $acceptable{$c}) {
+						die 'invalid container mapping';
+					}
+				} elsif (any { $_ eq '@graph' } @$container and any { $_ =~ /^[@](id|index)$/ } @$container) {
+					
+				} elsif (any { $_ eq '@set' } @$container and any { $_ =~ /^[@](id|index|type|language)$/ } @$container) {
+					
+				} else {
+					die 'invalid container mapping';
+				}
+			} else {
+				die 'invalid container mapping';
+			}
 			
 			if ($self->processing_mode eq 'json-ld-1.0') {
 				if (any { $container eq $_ } qw (@graph @id @type) or ref($container)) {
@@ -654,7 +680,8 @@ package JSONLD {
 			}
 			
 			my $v	= $self->_5_3_2_value_expand($activeCtx, $activeProp, $element);
-			println "4.3 returning from _5_1_2_expansion with expanded value" if $debug;
+			local($Data::Dumper::Indent)	= 1;
+			println "4.3 returning from _5_1_2_expansion with " . Data::Dumper->Dump([$v], ['expanded_value']) if $debug;
 			return $v; # 4.3
 		}
 		
@@ -686,7 +713,8 @@ package JSONLD {
 				}
 			}
 			
-			println "5.3 returning from _5_1_2_expansion with expanded array value" if $debug;
+			local($Data::Dumper::Indent)	= 1;
+			println "5.3 returning from _5_1_2_expansion with " . Data::Dumper->Dump([\@result], ['expanded_array_value']) if $debug;
 			return \@result; # 5.3
 		}
 		
@@ -718,7 +746,9 @@ package JSONLD {
 		println "10" if $debug;
 		my $type_scoped_ctx	= $activeCtx; # 10
 		
+		println "11" if $debug;
 		foreach my $key (sort keys %$element) {
+			my $__indent	= indent();
 			my $value	= $element->{$key};
 			# 11
 			println "11 [$key]" if $debug;
@@ -746,7 +776,7 @@ package JSONLD {
 			}
 			
 		}
-		println "After 11, element is " . Dumper($element) if $debug;
+		println "After 11, " . Data::Dumper->Dump([$element], ['element']) if $debug;
 		
 		println "12" if $debug;
 		my $result	= {}; # 12a
@@ -761,8 +791,9 @@ package JSONLD {
 		
 		my @elements	= ($element);
 		while (my $element = shift(@elements)) {
-			println "--- processing element" if ($debug);
+			println "13 --- processing element" if ($debug);
 			foreach my $key (sort keys %$element) {
+				my $__indent	= indent();
 				my $value	= $element->{$key};
 				# 13
 				println '-----------------------------------------------------------------' if $debug;
@@ -899,8 +930,8 @@ package JSONLD {
 					}
 
 					if ($expandedProperty eq '@set') {
-						# TODO: 13.4.13
-						println "13.4.13 TODO" if $debug;
+						println "13.4.13" if $debug;
+						$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered);
 					}
 
 					# NOTE: the language here is really confusing. the first conditional in 13.4.14 is the conjunction "expanded property is @reverse and value is not a map".
@@ -976,12 +1007,10 @@ package JSONLD {
 					next; # 13.10
 				}
 			
-# 				if (exists $container_mapping->{'@list'} and not (ref($expandedValue) eq 'HASH' and exists $expandedValue->{'@list'})) {
-				if ($self->_cm_contains($container_mapping, '@list') and not (ref($expandedValue) eq 'HASH' and exists $expandedValue->{'@list'})) {
+				if ($self->_cm_contains($container_mapping, '@list') and not $self->_is_list_object($expandedValue)) {
 					# 13.11
 					println "13.11" if $debug;
-					my @values	=  (ref($expandedValue) eq 'ARRAY') ? @$expandedValue : $expandedValue;
-					$expandedValue	= { '@list' => \@values };
+					$expandedValue	= { '@list' => [$expandedValue] };
 				}
 
 # 				if (exists $container_mapping->{'@graph'}) {
@@ -1020,7 +1049,6 @@ package JSONLD {
 
 					println "13.14.2" if $debug;
 					if (ref($expandedValue) eq 'ARRAY') {
-						warn Dumper($result->{$expandedProperty});
 						push(@{$result->{$expandedProperty}}, @$expandedValue); # 13.14.2
 					} elsif (ref($expandedValue)) {
 						# NOTE: I'm assuming that this is the intention of 13.14.2,
@@ -1105,29 +1133,30 @@ package JSONLD {
 			}
 		}
 		
-		my @keys	= keys %$result;
-		if (scalar(@keys) == 1 and $keys[0] eq '@language') {
-			println "17" if $debug;
-			$result	= undef; # 17
-		}
-
-		if (not(defined($activeProp)) or $activeProp eq '@graph') {
-			# 18
-			local($Data::Dumper::Indent)	= 0;
-			println "18 " . Data::Dumper->Dump([$result], ['*result']) if $debug;
-			if (scalar(@keys) == 0 or exists $result->{'@value'} or exists $result->{'@list'}) {
-				println "18.1" if $debug;
-				$result	= undef; # 18.1
-			} elsif (scalar(@keys) == 1 and $keys[0] eq '@id') {
+		if (ref($result) eq 'HASH') { # NOTE: assuming based on the effects of 16.2 that this condition is necessary to guard against cases where $result is not a hashref.
+			my @keys	= keys %$result;
+			if (scalar(@keys) == 1 and $keys[0] eq '@language') {
+				println "17" if $debug;
+				$result	= undef; # 17
+			}
+			if (not(defined($activeProp)) or $activeProp eq '@graph') {
+				# 18
+				local($Data::Dumper::Indent)	= 0;
+				println "18 " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+				if (scalar(@keys) == 0 or exists $result->{'@value'} or exists $result->{'@list'}) {
+					println "18.1" if $debug;
+					$result	= undef; # 18.1
+				} elsif (scalar(@keys) == 1 and $keys[0] eq '@id') {
 				
-				unless ($frameExpansion) {
-					println "18.2" if $debug;
-					$result	= undef; # 18.2
+					unless ($frameExpansion) {
+						println "18.2" if $debug;
+						$result	= undef; # 18.2
+					}
 				}
 			}
 		}
 		
-		local($Data::Dumper::Indent)	= 0;
+		local($Data::Dumper::Indent)	= 1;
 		println "19 returning from _5_1_2_expansion with final value " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 		return $result; # 19
 	}
@@ -1192,7 +1221,7 @@ package JSONLD {
 				return $value; # 6.2
 			}
 			
-			if ($localCtx and exists $localCtx->{terms}{$prefix} and not($defined->{$prefix})) {
+			if ($localCtx and exists $localCtx->{$prefix} and not($defined->{$prefix})) {
 				println "6.3" if $debug;
 				$self->_4_2_2_create_term_definition($activeCtx, $localCtx, $prefix, $defined);
 			}
