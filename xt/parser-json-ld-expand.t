@@ -19,7 +19,7 @@ our $debug	= 0;
 $JSONLD::debug	= $debug;
 our $PATTERN;
 if ($debug) {
-	$PATTERN = qr/t0028/;
+	$PATTERN = qr/t0005/;
 } else {
 	$PATTERN	= /./;
 }
@@ -46,14 +46,21 @@ foreach my $t (@$tests) {
 	my $expect	= $t->{'expect'};
 	my $name	= $t->{'name'};
 	my $purpose	= $t->{'purpose'};
+	my $options	= $t->{'option'} // {};
+	my $_base	= $options->{'base'};
 	my @types	= @{ $t->{'@type'} };
 	my %types	= map { $_ => 1 } @types;
 
+	my $test_base;
+	if (defined($_base)) {
+		$test_base	= IRI->new(value => $_base, base => $base)->abs;
+	} else {
+		$test_base	= IRI->new(value => $input, base => $base)->abs;
+	}
 	my $j		= JSON->new->canonical(1)->allow_nonref(1);
 	$j->boolean_values(0, 1);
 	if ($types{'jld:PositiveEvaluationTest'}) {
 		note($id);
-		my $test_base	= IRI->new(value => $input, base => $base)->abs;
 		my $jld			= JSONLD->new(base_iri => IRI->new($test_base));
 		my $infile		= File::Spec->catfile($path, $input);
 		my $outfile		= File::Spec->catfile($path, $expect);
@@ -69,8 +76,25 @@ foreach my $t (@$tests) {
 		}
 		my $got			= $j->encode($expanded);
 		if ($debug) {
-			warn "EXPECT:\n===============\n" . Dumper($j->decode($expected));
-			warn "OUTPUT:\n===============\n" . Dumper($j->decode($got));
+			my @data	= (
+				['EXPECTED', $expected],
+				['OUTPUT__', $got],
+			);
+			my @files;
+			foreach my $d (@data) {
+				my ($name, $data)	= @$d;
+				warn "=======================\n";
+				my $filename	= "/tmp/json-ld-$$-$name.out";
+				open(my $fh, '>', $filename) or die $!;
+				push(@files, $filename);
+				my $out	= Data::Dumper->Dump([$j->decode($data)], ["*$name"]);
+				warn $out;
+				print {$fh} $out;
+				close($fh);
+			}
+			unless ($got eq $expected) {
+				system('/usr/local/bin/bbdiff', '--wait', '--resume', @files);
+			}
 		}
 		is($got, $expected, "$id: $name");
 	} elsif ($types{'jld:NegativeEvaluationTest'}){
