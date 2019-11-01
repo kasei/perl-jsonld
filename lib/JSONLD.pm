@@ -117,6 +117,24 @@ package JSONLD {
 		return 0;
 	}
 	
+	sub _is_node_object {
+		my $self	= shift;
+		my $value	= shift;
+		return 0 unless (ref($value) eq 'HASH');
+		foreach my $p (qw(@value @list @set)) {
+			return 0 if (exists $value->{$p});
+		}
+		# TODO: check that value "is not the top-most map in the JSON-LD document consisting of no other entries than @graph and @context."
+		return 1;
+	}
+	
+	sub _is_value_object {
+		my $self	= shift;
+		my $value	= shift;
+		return 0 unless (ref($value) eq 'HASH');
+		return (exists $value->{'@value'});
+	}
+
 	sub _is_list_object {
 		my $self	= shift;
 		my $value	= shift;
@@ -645,8 +663,8 @@ package JSONLD {
 		println "ENTER    =================> _5_1_2_expansion('$activeProp')" if $debug;
 		my $__indent	= indent();
 		local($Data::Dumper::Indent)	= 0;
-		println(Data::Dumper->Dump([$activeCtx], ['*activeCtx'])) if $debug;
-		println(Data::Dumper->Dump([$element], ['*element'])) if $debug;
+		println(Data::Dumper->Dump([$activeCtx], ['activeCtx'])) if $debug;
+		println(Data::Dumper->Dump([$element], ['element'])) if $debug;
 		my $frameExpansion	= shift // 0;
 		my $ordered		= shift // 0;
 		my $fromMap		= shift // 0;
@@ -797,7 +815,7 @@ package JSONLD {
 				my $value	= $element->{$key};
 				# 13
 				println '-----------------------------------------------------------------' if $debug;
-				println "13 [$key]" if $debug;
+				println "13 [$key] " . Data::Dumper->Dump([$value], ['value']) if $debug;
 				if ($key eq '@context') {
 					println "13.1 going to next element key" if $debug;
 					next; # 13.1
@@ -873,9 +891,30 @@ package JSONLD {
 						$expandedValue	= $v;
 					}
 
-					if ($expandedProperty eq '@included' and $self->processing_mode eq 'json-ld-1.1') {
-						# TODO: 13.4.7
-						println "13.4.7 TODO" if $debug;
+					if ($expandedProperty eq '@included') {
+						println "13.4.7" if $debug;
+						if ($self->processing_mode eq 'json-ld-1.1') {
+							println "13.4.7.1" if $debug;
+							next;
+						}
+						
+						println "13.4.7.2" if $debug;
+						$expandedValue	= $self->_expand($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.6
+						unless (ref($expandedValue) eq 'ARRAY') {
+							$expandedValue	= [$expandedValue];
+						}
+						
+						foreach my $v (@$expandedValue) {
+							unless ($self->_is_node_object($v)) {
+								println "13.4.7.3" if $debug;
+								die 'invalid @included value';
+							}
+						}
+						
+						if (exists $result->{'@include'}) {
+							println "13.4.7.4" if $debug;
+							unshift(@$expandedValue, $result->{'@include'});
+						}
 					} elsif ($expandedProperty eq '@value') {
 						println "13.4.8" if $debug;
 						if ($input_type eq '@json') {
@@ -914,19 +953,46 @@ package JSONLD {
 						}
 					}
 
-					if ($expandedProperty eq '@direction' and $value ne 'ltr' and $value ne 'rtl') {
-						# TODO: 13.4.10
-						println "13.4.10 TODO" if $debug;
+					if ($expandedProperty eq '@direction') {
+						println "13.4.10" if $debug;
+						if ($self->processing_mode eq 'json-ld-1.0') {
+							println "13.4.10.1" if $debug;
+							next;
+						}
+
+						if ($value ne 'ltr' and $value ne 'rtl') {
+							println "13.4.10.2" if $debug;
+							die 'invalid base direction';
+						}
+
+						println "13.4.10.3" if $debug;
+						$expandedValue	= $value;
+
+						if ($frameExpansion) {
+							println "13.4.10.4 TODO: frameExpansion support"
+						}
 					}
 
-					if ($expandedProperty eq '@index' and ref($value)) {
-						# TODO: 13.4.11
-						println "13.4.11 TODO" if $debug;
+					if ($expandedProperty eq '@index') {
+						println "13.4.11" if $debug;
+						if (ref($value)) {
+							println "13.4.11.1" if $debug;
+							die 'invalid @index value';
+						}
+						
+						println "13.4.11.2" if $debug;
+						$expandedValue	= $value;
 					}
 
 					if ($expandedProperty eq '@list') {
-						# TODO: 13.4.12
-						println "13.4.12 TODO" if $debug;
+						println "13.4.12" if $debug;
+						if (not defined($activeProp) or $activeProp eq '@graph') {
+							println "13.4.12.1" if $debug;
+							next;
+						}
+
+						println "13.4.12.2" if $debug;
+						$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered);
 					}
 
 					if ($expandedProperty eq '@set') {
@@ -939,28 +1005,76 @@ package JSONLD {
 					if ($expandedProperty eq '@reverse') {
 						println "13.4.14" if $debug;
 						if (ref($value) ne 'HASH') {
+							println "13.4.14.1" if $debug;
 							die 'invalid @reverse value';
 						} else {
-							println "13.4.14.1" if $debug;
+							println "13.4.14.2" if $debug;
 							$expandedValue	= $self->_expand($activeCtx, '@reverse', $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.14.1
 							
-							if (exists $expandedValue->{'@reverse'}) {
-								println "13.4.14.2 TODO" if $debug;
+							if (ref($expandedValue) eq 'HASH' and exists $expandedValue->{'@reverse'}) { # NOTE: spec text does not assert that expandedValue is a map
+								println "13.4.14.3" if $debug;
+								foreach my $property (keys %{ $expandedValue->{'@reverse'} }) {
+									my $__indent	= indent();
+									println "13.4.14.3 [$property]" if $debug;
+									my $item	= $expandedValue->{'@reverse'}{$property};
+									if (not exists $result->{$property}) {
+										println "13.4.14.3.1" if $debug;
+										$result->{$property}	= [];
+									}
+									
+									println "13.4.14.3.2" if $debug;
+									push(@{ $result->{$property} }, $item);
+								}
 							}
 							
-							my @keys	= grep { $_ ne '@reverse' } keys %$expandedValue;
-							if (scalar(@keys)) {
-								println "13.4.14.3 TODO" if $debug;
+							if (ref($expandedValue) eq 'HASH') { # NOTE: spec text does not assert that expandedValue is a map
+								my @keys	= grep { $_ ne '@reverse' } keys %$expandedValue;
+								if (scalar(@keys)) {
+									println "13.4.14.4" if $debug;
+								
+									if (not exists $result->{'@reverse'}) {
+										println "13.4.14.4.1" if $debug;
+										$result->{'@reverse'}	= {};
+									}
+								
+									println "13.4.14.4.2" if $debug;
+									my $reverse_map	= $result->{'@reverse'};
+								
+									println "13.4.14.4.3" if $debug;
+									foreach my $property (grep { $_ ne '@reverse' } keys %{ $expandedValue }) {
+										my $__indent	= indent();
+										println "13.4.14.4.3 [$property]" if $debug;
+										my $items	= $expandedValue->{$property};
+									
+										println "13.4.14.4.3.1" if $debug;
+										foreach my $item (@$items) {
+											my $__indent	= indent();
+											if ($self->_is_value_object($item) or $self->_is_list_object($item)) {
+												println "13.4.14.4.3.1.1" if $debug;
+												die 'invalid reverse property value';
+											}
+										
+											if (not exists $reverse_map->{$property}) {
+												println "13.4.14.4.3.1.2" if $debug;
+												$reverse_map->{$property}	= [];
+											}
+										
+											println "13.4.14.4.3.1.3" if $debug;
+											push(@{ $reverse_map->{$property} }, $item);
+										}
+									}
+								}
 							}
 							
-							println "13.4.14.4 going to next element key" if $debug;
-							next; # 13.4.14.4
+							println "13.4.14.5 going to next element key" if $debug;
+							next; # 13.4.14.5
 						}
 					}
 
 					if ($expandedProperty eq '@nest') {
-						# TODO: 13.4.15
-						println "13.4.15 TODO" if $debug;
+						println "13.4.15" if $debug;
+						$nests->{$key}	//= [];
+						next;
 					}
 
 					if ($frameExpansion) {
@@ -1010,7 +1124,8 @@ package JSONLD {
 				if ($self->_cm_contains($container_mapping, '@list') and not $self->_is_list_object($expandedValue)) {
 					# 13.11
 					println "13.11" if $debug;
-					$expandedValue	= { '@list' => [$expandedValue] };
+					my @values	= (ref($expandedValue) eq 'ARRAY') ? @$expandedValue : ($expandedValue);
+					$expandedValue	= { '@list' => \@values };
 				}
 
 # 				if (exists $container_mapping->{'@graph'}) {
