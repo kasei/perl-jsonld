@@ -6,7 +6,9 @@ use Test::More;
 use Test::Exception;
 use FindBin qw($Bin);
 use File::Glob qw(bsd_glob);
+use LWP;
 use File::Spec;
+use Encode qw(encode);
 use JSON qw(decode_json);
 use Data::Dumper;
 
@@ -76,7 +78,17 @@ package JSONLD {
 		}
 		return $is_iri;
 	}
-
+	
+	sub _load_document {
+		my $self	= shift;
+		my $url		= shift;
+		my $profile	= shift;
+		my $req_profile	= shift;
+		my $ua		= LWP::UserAgent->new();
+		my $resp	= $ua->get($url);
+		return $resp;
+	}
+	
 	sub _cm_contains {
 		my $self	= shift;
 		my $container_mapping	= shift;
@@ -112,7 +124,7 @@ package JSONLD {
 		my $self	= shift;
 		my $ctx		= shift;
 		foreach my $term (keys %{ $ctx->{terms} }) {
-			return 1 if $term->{protected};
+			return 1 if $ctx->{terms}{$term}{protected};
 		}
 		return 0;
 	}
@@ -222,11 +234,55 @@ package JSONLD {
 					println "5.5.1" if $debug;
 					die 'invalid @version value'; # 5.5.1
 				}
-				println "5.5.2 TODO" if $debug;
+				if ($self->processing_mode eq 'json-ld-1.0') {
+					println "5.5.2" if $debug;
+					die 'processing mode conflict';
+				}
 			}
 
 			if (exists $context->{'@import'}) {
-				println "5.6 TODO" if $debug;
+				println "5.6" if $debug;
+				if ($self->processing_mode eq 'json-ld-1.0') {
+					println "5.6.1" if $debug;
+					die 'invalid context entry';
+				}
+				
+				my $value	= $context->{'@import'};
+				if (ref($value)) {
+					println "5.6.2" if $debug;
+					die 'invalid @import value';
+				}
+				
+				println "5.6.3" if $debug;
+				my $import	= IRI->new(value => $value, base => $self->base_iri)->abs;
+				
+				println "5.6.4 loading $import" if $debug;
+				my $resp	= $self->_load_document($import, 'http://www.w3.org/ns/json-ld#context', 'http://www.w3.org/ns/json-ld#context');
+				
+				if (not $resp->is_success) {
+					println "5.6.5" if $debug;
+					die 'loading remote context failed';
+				}
+				
+				my $content	= $resp->decoded_content;
+				my $j		= eval { decode_json(encode('UTF-8', $content)) };
+				if ($@) {
+					die 'loading remote context failed';
+				}
+				
+				unless (ref($j) eq 'HASH' and exists $j->{'@context'} and ref($j->{'@context'}) eq 'HASH') {
+					println "5.6.6" if $debug;
+					die 'invalid remote context';
+				}
+				my $import_context	= $j;
+				
+				if (exists $import_context->{'@import'}) {
+					println "5.6.7" if $debug;
+					die 'invalid context entry';
+				}
+				
+				println "5.6.8" if $debug;
+				%$context	= (%$import_context, %$context);
 			}
 			
 			if (exists $context->{'@base'} and scalar(@$remote_contexts) == 0) {
@@ -266,15 +322,45 @@ package JSONLD {
 			}
 			
 			if (exists $context->{'@language'}) {
-				println "5.9 TODO" if $debug;
+				println "5.9 TODO"; # if $debug;
 			}
 			
 			if (exists $context->{'@direction'}) {
-				println "5.10 TODO" if $debug;
+				println "5.10" if $debug;
+				if ($self->processing_mode eq 'json-ld-1.0') {
+					println "5.10.1" if $debug;
+					die 'invalid context entry';
+				}
+				
+				println "5.10.2" if $debug;
+				my $value	= $context->{'@direction'};
+				
+				if (not defined($value)) {
+					println "5.10.3" if $debug;
+					delete $result->{'@direction'}
+				} elsif (not ref($value)) {
+					println "5.10.4" if $debug;
+					if ($value ne 'ltr' and $value ne 'rtl') {
+						die 'invalid base direction';
+					}
+					$result->{'@direction'}	= $value;
+				}
 			}
 			
 			if (exists $context->{'@propagate'}) {
-				println "5.11 TODO" if $debug;
+				println "5.11" if $debug;
+				if ($self->processing_mode eq 'json-ld-1.0') {
+					println "5.11.1" if $debug;
+					die 'invalid context entry';
+				}
+				
+				my $p	= $context->{'@propagate'};
+				if ($p ne '1' and $p ne '0') { # boolean true or false
+					println "5.11.2" if $debug;
+					die 'invalid @propagate value';
+				}
+				
+				println "5.11.3" if $debug;
 			}
 			
 			println "5.12" if $debug;
@@ -483,7 +569,8 @@ package JSONLD {
 			
 			if (not exists $keywords{$id} and substr($id, 0, 1) eq '@') {
 				println "17.3" if $debug;
-				die 'create term definition encountered an @id that looks like a keyword: ' . $id; # 17.3
+				warn "create term definition encountered an \@id that looks like a keyword: $id\n"; # 17.3
+				return;
 			} else {
 				# 17.4
 				println "17.4" if $debug;
@@ -597,32 +684,72 @@ package JSONLD {
 
 		if (exists $value->{'@index'}) {
 			# TODO: 23
-			println "23 TODO" if $debug;
+			println "23 TODO"; # if $debug;
 		}
 
 		if (exists $value->{'@context'}) {
-			# TODO: 24
-			println "24 TODO" if $debug;
+			println "24" if $debug;
+			if ($self->processing_mode eq 'json-ld-1.0') {
+				println "24.1" if $debug;
+				die 'invalid term definition';
+			}
+
+			println "24.2" if $debug;
+			my $context	= $value->{'@context'};
+
+			println "24.3" if $debug;
+			$self->_4_1_2_ctx_processing($activeCtx, $context, override_protected => 1); # discard result
+			
+			$definition->{'@context'}	= $context;	# Note: not sure about the spec text wording here: "Set the local context of definition to context." What is the "local context" of a definition?
 		}
 
 		if (exists $value->{'@language'} and not exists $value->{'@type'}) {
-			# TODO: 25
-			println "25 TODO" if $debug;
+			println "25" if $debug;
+			println "25.1" if $debug;
+			my $language	= $value->{'@language'};
+			if (defined($language) and ref($language)) {
+				die 'invalid language mapping';
+			}
+			# TODO: validate language tag against BCP47
+
+			println "25.2" if $debug;
+			# TODO: normalize language tag
+			$definition->{language_mapping}	= $language;
 		}
 
 		if (exists $value->{'@direction'} and not exists $value->{'@type'}) {
-			# TODO: 26
-			println "26 TODO" if $debug;
+			println "26" if $debug;
+			my $direction	= $value->{'@direction'};
+
+			println "26.1" if $debug;
+			if (not(defined($direction))) {
+			} elsif ($direction ne 'ltr' and $direction ne 'rtl') {
+				die 'invalid base direction';
+			}
+			
+			$definition->{direction_mapping}	= $direction;
 		}
 
 		if (exists $value->{'@nest'}) {
-			# TODO: 27
-			println "27 TODO" if $debug;
+			println "27" if $debug;
+			if ($self->processing_mode eq 'json-ld-1.0') {
+				println "27.1" if $debug;
+				die 'invalid term definition';
+			}
+			
+			println "27.2" if $debug;
+			my $nv	= $value->{'@nest'};
+			if (not(defined($nv)) or ref($nv)) {
+				die 'invalid @nest value';
+			} elsif (exists $keywords{$nv} and $nv ne '@nest') {
+				die 'invalid @nest value';
+			}
+			$definition->{nest_value}	= $nv;
 		}
 
 		if (exists $value->{'@prefix'}) {
 			# TODO: 28
-			println "28 TODO" if $debug;
+			println "28 TODO"; # if $debug;
 # 			if ($self->processing_mode eq 'json-ld-1.0' or $term =~ /:/) {
 # 				println "28.1" if $debug;
 # 				die 'invalid term definition'; # 28.1
@@ -669,9 +796,10 @@ package JSONLD {
 		local($Data::Dumper::Indent)	= 0;
 		println(Data::Dumper->Dump([$activeCtx], ['activeCtx'])) if $debug;
 		println(Data::Dumper->Dump([$element], ['element'])) if $debug;
-		my $frameExpansion	= shift // 0;
-		my $ordered		= shift // 0;
-		my $fromMap		= shift // 0;
+		my %args		= @_;
+		my $frameExpansion	= $args{frameExpansion} // 0;
+		my $ordered		= $args{ordered} // 0;
+		my $fromMap		= $args{fromMap} // 0;
 		
 		unless (defined($element)) {
 			println "1 returning from _5_1_2_expansion: undefined element" if $debug;
@@ -1111,12 +1239,133 @@ package JSONLD {
 			
 # 				if (exists $container_mapping->{'@language'} and ref($value) eq 'HASH') {
 				if ($self->_cm_contains($container_mapping, '@language') and ref($value) eq 'HASH') {
-					# TODO: 13.7
-					println "13.7 TODO" if $debug;
+					println "13.7" if $debug;
+					println "13.7.1" if $debug;
+					my $expandedValue	= [];
+					
+					println "13.7.2" if $debug;
+					my $direction	= $activeCtx->{default_base_direction};
+					
+					if (exists $tdef->{direction_mapping}) {
+						println "13.7.3" if $debug;
+						$direction	= $tdef->{direction_mapping};
+					}
+					
+					println "13.7.4" if $debug;
+					for my $language (sort keys %$value) {
+						my $__indent	= indent();
+						my $language_value	= $value->{$language};
+						println "13.7.4 [$language]" if $debug;
+						
+						if (ref($language_value) ne 'ARRAY') {
+							println "13.7.4.1" if $debug;
+							$language_value	= [$language_value];
+						}
+						
+						println "13.7.4.2" if $debug;
+						foreach my $item (@$language_value) {
+							my $__indent	= indent();
+							unless (defined($item)) {
+								println "13.7.4.2.1" if $debug;
+								next;
+							}
+							
+							if (ref($item)) {
+								println "13.7.4.2.2" if $debug;
+								die 'invalid language map value';
+							}
+							
+							println "13.7.4.2.3" if $debug;
+							my $v	= {'@value' => $item, '@language' => $language};
+							my $well_formed	= 1; # TODO: check BCP47 well-formedness of $item
+							if ($item ne '@none' and not($well_formed)) {
+								warn "Language tag is not well-formed: $item";
+							}
+							# TODO: normalize language tag
+							
+							if ($language eq '@none') { # TODO: handle spec text "or expands to @none"
+								println "13.7.4.2.4" if $debug;
+								delete $v->{'@language'};
+							}
+							
+							if (defined($language)) {
+								println "13.7.4.2.5" if $debug;
+								$v->{'@direction'}	= $direction;
+							}
+							
+							println "13.7.4.2.6" if $debug;
+							push(@$expandedValue, $v);
+						}
+					}
 # 				} elsif ((exists $container_mapping->{'@index'} or exists $container_mapping->{'@type'} or exists $container_mapping->{'@id'}) and ref($value) eq 'HASH') {
 				} elsif ($self->_cm_contains_any($container_mapping, '@index', '@type', '@id') and ref($value) eq 'HASH') {
-					# TODO: 13.8
-					println "13.8 TODO" if $debug;
+					println "13.8" if $debug;
+					println "13.8.1" if $debug;
+					my $expandedValue	= [];
+					
+					println "13.8.2" if $debug;
+					my $index_key	= $tdef->{index_mapping} // '@index';
+					
+					println "13.8.3" if $debug;
+					foreach my $index (sort keys %$value) {
+						my $__indent	= indent();
+						my $index_value	= $value->{$index};
+						println "13.8.3 [$index]" if $debug;
+						my $map_context;
+						if ($self->_cm_contains_any($container_mapping, '@id', '@type')) {
+							println "13.8.3.1" if $debug;
+							$map_context	= $activeCtx->{previous_context} // $activeCtx;
+						} else {
+							$map_context	= $activeCtx;
+						}
+						
+						my $index_tdef	= $self->_ctx_term_defn($map_context, $index);
+						if ($self->_cm_contains_any($container_mapping, '@type') and exists $index_tdef->{'@context'}) {
+							println "13.8.3.2" if $debug;
+							$map_context	= $self->_4_1_2_ctx_processing($map_context, $index_tdef->{'@context'});
+						} else {
+							println "13.8.3.3" if $debug;
+							$map_context	= $activeCtx;
+						}
+						
+						println "13.8.3.4" if $debug;
+						my $expanded_index	= $self->_5_2_2_iri_expansion($activeCtx, $index, vocab => 1);
+
+						if (ref($index_value) ne 'ARRAY') {
+							println "13.8.3.5" if $debug;
+							$index_value	= [$index_value];
+						}
+						
+						println "13.8.3.6" if $debug;
+						$index_value	= $self->_expand($map_context, $key, $index_value, frameExpansion => $frameExpansion, ordered => $ordered);
+						
+						println "13.8.3.7" if $debug;
+						foreach my $item (@$index_value) {
+							my $__indent	= indent();
+							println "13.8.3.7 [$item]" if $debug;
+							if ($self->_cm_contains($container_mapping, '@graph')) {
+								println "13.8.3.7.1" if $debug;
+								$item	= {'@graph' => (ref($item) eq 'ARRAY') ? $item : [$item]};
+							}
+
+							if ($self->_cm_contains($container_mapping, '@index') and $index_key ne '@index' and not exists $item->{'@index'} and $expanded_index ne '@none') {
+								println "13.8.3.7.2 TODO"; # if $debug;
+								my $index_property_values	= $expanded_index;
+							} elsif ($self->_cm_contains($container_mapping, '@index') and not exists $item->{'@index'} and $expanded_index ne '@none') {
+								println "13.8.3.7.3" if $debug;
+								$item->{'@index'}	= $index;
+							} elsif ($self->_cm_contains($container_mapping, '@id') and not exists $item->{'@id'} and $expanded_index ne '@none') {
+								println "13.8.3.7.4" if $debug;
+								$expanded_index	= $self->_5_2_2_iri_expansion($activeCtx, $index, documentRelative => 1);
+								$item->{'@id'}	= $expanded_index;
+							} elsif ($self->_cm_contains($container_mapping, '@type')) {
+								println "13.8.3.7.5 TODO"; # if $debug;
+							}
+							
+							println "13.8.3.7.6" if $debug;
+							push(@$expandedValue, $value);
+						}
+					}
 				} else {
 					println "13.9" if $debug;
 					$expandedValue	= $self->_expand($activeCtx, $key, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.9
