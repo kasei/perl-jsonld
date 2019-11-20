@@ -16,6 +16,7 @@ package JSONLD {
 	use Moo;
 	use IRI;
 	use JSON;
+	use B qw(svref_2object SVf_IOK SVf_POK);
 	use List::Util qw(all any);
 	use Debug::ShowStuff qw(indent println);
 	use Data::Dumper;
@@ -34,6 +35,14 @@ package JSONLD {
 		my $d		= shift;
 # 		warn "Expanding...";
 		return $self->_expand(undef, undef, $d);
+	}
+	
+	sub _is_string {
+		my $v	= shift;
+		return 0 if ref($v);
+		my $sv	= svref_2object(\$v);
+		my $flags	= $sv->FLAGS;
+		return $flags & SVf_POK;
 	}
 	
 	sub _expand {
@@ -322,7 +331,21 @@ package JSONLD {
 			}
 			
 			if (exists $context->{'@language'}) {
-				println "5.9 TODO"; # if $debug;
+				println "5.9" if $debug;
+				println "5.9.1 language = " . $context->{'@language'} if $debug;
+				my $value	= $context->{'@language'};
+				
+				if (not defined($value)) {
+					println "5.9.2" if $debug;
+					delete $result->{'@language'};
+				} elsif (_is_string($value)) {
+					println "5.9.3 value is a string" if $debug;
+					$result->{'@language'}	= $value;
+					# TODO: validate language tag against BCP47
+				} else {
+					println "5.9.3 value is NOT a string" if $debug;
+					die 'invalid default language';
+				}
 			}
 			
 			if (exists $context->{'@direction'}) {
@@ -813,7 +836,7 @@ package JSONLD {
 		my $property_scoped_ctx;
 		my $tdef = $self->_ctx_term_defn($activeCtx, $activeProp);
 		if ($tdef and my $lctx = $tdef->{'@context'}) {
-			println "3" if $debug;
+			println "3 property-scoped context" if $debug;
 			$property_scoped_ctx	= $lctx; # 3
 		}
 		
@@ -1079,12 +1102,15 @@ package JSONLD {
 					if ($expandedProperty eq '@language') {
 						println "13.4.9" if $debug;
 						if (ref($value)) {
+							println "13.4.9.1" if $debug;
+							if ($frameExpansion) {
+								println "13.4.9.1 TODO: frameExpansion support"; # if $debug;
+							}
 							die 'invalid language-tagged string';
 						}
-						$expandedValue	= $value; # 13.4.9
-						if ($frameExpansion) {
-							println "13.4.9 TODO: frameExpansion support"; # if $debug;
-						}
+						println "13.4.9.2" if $debug;
+						$expandedValue	= $value; # 13.4.9.2
+						# TODO: validate language tag against BCP47
 					}
 
 					if ($expandedProperty eq '@direction') {
@@ -1237,7 +1263,6 @@ package JSONLD {
 					$expandedValue	= { '@value' => $value, '@type' => '@json' }; # 13.6
 				}
 			
-# 				if (exists $container_mapping->{'@language'} and ref($value) eq 'HASH') {
 				if ($self->_cm_contains($container_mapping, '@language') and ref($value) eq 'HASH') {
 					println "13.7" if $debug;
 					println "13.7.1" if $debug;
@@ -1656,10 +1681,10 @@ package JSONLD {
 		if (exists($tdef->{type_mapping}) and $tm ne '@id' and $tm ne '@vocab' and $tm ne '@none') {
 			println "4" if $debug;
 			$result->{'@type'}	= $tm; # 4
-		} elsif (not(ref($value))) {
+		} elsif (_is_string($value)) { # not(ref($value))) {
 			println "5" if $debug;
 			println "5.1" if $debug;
-			my $language	= $tdef->{language_mapping} // $activeCtx->{default_language}; # 5.1
+			my $language	= (exists $tdef->{language_mapping}) ? $tdef->{language_mapping} : $activeCtx->{'@language'}; # 5.1
 
 			println "5.2" if $debug;
 			my $direction	= $tdef->{direction_mapping} // $activeCtx->{default_base_direction}; # 5.2
