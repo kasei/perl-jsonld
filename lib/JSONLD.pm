@@ -1393,9 +1393,10 @@ package JSONLD {
 					}
 				} else {
 					println "13.9" if $debug;
-					$expandedValue	= $self->_expand($activeCtx, $key, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.9
+					$expandedValue	= $self->_5_1_2_expansion($activeCtx, $key, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.9
 				}
 			
+				warn Dumper($expandedValue);
 				if (not(defined($expandedValue))) {
 					println "13.10 going to next element key" if $debug;
 					next; # 13.10
