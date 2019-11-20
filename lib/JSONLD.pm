@@ -197,12 +197,12 @@ package JSONLD {
 			if (not(ref($context))) {
 				println "5.2" if $debug;
 				
-				println "5.2.1 TODO" if $debug;
-				println "5.2.2 TODO" if $debug;
-				println "5.2.3 TODO" if $debug;
-				println "5.2.4 TODO" if $debug;
-				println "5.2.5 TODO" if $debug;
-				println "5.2.6 TODO" if $debug;
+				println "5.2.1 TODO"; # if $debug;
+				println "5.2.2 TODO"; # if $debug;
+				println "5.2.3 TODO"; # if $debug;
+				println "5.2.4 TODO"; # if $debug;
+				println "5.2.5 TODO"; # if $debug;
+				println "5.2.6 TODO"; # if $debug;
 
 				println "5.2.7 moving to next context" if $debug;
 				next;
@@ -347,8 +347,8 @@ package JSONLD {
 			}
 			if (substr($term, 0, 1) eq '@') {
 				# https://www.w3.org/2018/json-ld-wg/Meetings/Minutes/2019/2019-09-20-json-ld#section5-2
-				warn "create term definition attempted on a term that looks like a keyword: $term";
-				println "5 returning so as to ignore a term that has the form of a keyword: $term";
+				warn "create term definition attempted on a term that looks like a keyword: $term\n";
+				println "5 returning so as to ignore a term that has the form of a keyword: $term" if $debug;
 				return;
 			}
 		}
@@ -462,7 +462,7 @@ package JSONLD {
 			$activeCtx->{terms}{$term}	= $definition;
 			$defined->{$term}	= 1;
 			local($Data::Dumper::Indent)	= 0;
-			println "returning from _4_2_2_create_term_definition: " . Dumper($activeCtx->{terms}{$term});
+			println "returning from _4_2_2_create_term_definition: " . Dumper($activeCtx->{terms}{$term}) if $debug;
 			return;
 		}
 
@@ -525,7 +525,7 @@ package JSONLD {
 			}
 		} elsif ($term =~ m{/}) {
 			# TODO: 19
-			println "19 TODO" if $debug;
+			println "19 TODO"; # if $debug;
 		} elsif ($term eq '@type') {
 			println "20" if $debug;
 			$definition->{iri_mapping}	= '@type'; # 20
@@ -541,7 +541,7 @@ package JSONLD {
 		
 		if (exists $value->{'@container'}) {
 			# TODO: 22
-			println "22" if $debug;
+			println "22"; # if $debug;
 
 			println "22.1" if $debug;
 			my $container	= $value->{'@container'}; # 22.1
@@ -651,7 +651,7 @@ package JSONLD {
 		$activeCtx->{terms}{$term}	= $definition; # 31
 		$defined->{$term}	= 1; # 31
 		local($Data::Dumper::Indent)	= 0;
-		println "returning from _4_2_2_create_term_definition: " . Dumper($activeCtx->{terms}{$term});
+		println "returning from _4_2_2_create_term_definition: " . Dumper($activeCtx->{terms}{$term}) if $debug;
 		return;
 	}
 	
@@ -699,7 +699,7 @@ package JSONLD {
 			
 			my $v	= $self->_5_3_2_value_expand($activeCtx, $activeProp, $element);
 			local($Data::Dumper::Indent)	= 1;
-			println "4.3 returning from _5_1_2_expansion with " . Data::Dumper->Dump([$v], ['expanded_value']) if $debug;
+			println "4.3 returning from _5_1_2_expansion with " . Data::Dumper->Dump([$v], ['expandedValue']) if $debug;
 			return $v; # 4.3
 		}
 		
@@ -783,7 +783,7 @@ package JSONLD {
 			}
 			
 			foreach my $term (sort @$value) {
-				println "11.2 attempting with [$term]";
+				println "11.2 attempting with [$term]" if $debug;
 				if (not(ref($term))) {
 					my $tdef	= $self->_ctx_term_defn($activeCtx, $term);
 					if (my $c = $tdef->{'@context'}) {
@@ -849,7 +849,7 @@ package JSONLD {
 					# NOTE: another case of an "Otherwise" applying to a partial conjunction
 					if ($expandedProperty eq '@id') {
 						if (ref($value)) {
-							println "13.4.4 invalid";
+							println "13.4.4 invalid" if $debug;
 							die 'invalid @id value';
 						} else {
 							println "13.4.4" if $debug;
@@ -863,7 +863,7 @@ package JSONLD {
 						my $is_array	= ref($value) eq 'ARRAY';
 						my $is_array_of_strings	= ($is_array and all { not(ref($_)) } @$value);
 						if (not($is_string) and not($is_array_of_strings)) {
-							println "13.4.5 invalid";
+							println "13.4.5 invalid" if $debug;
 							die 'invalid type value';
 						} else {
 							# 13.4.5
@@ -937,8 +937,9 @@ package JSONLD {
 							next;
 						}
 						
-						println "13.4.8.5 TODO" if $debug;
-						# TODO: handle frameExpansion?
+						if ($frameExpansion) {
+							println "13.4.8.5 TODO: frameExpansion support"; # if $debug;
+						}
 					}
 
 					# NOTE: again with the "Otherwise" that seems to apply to only half the conjunction
@@ -949,7 +950,7 @@ package JSONLD {
 						}
 						$expandedValue	= $value; # 13.4.9
 						if ($frameExpansion) {
-							println "13.4.9 TODO: frameExpansion support"
+							println "13.4.9 TODO: frameExpansion support"; # if $debug;
 						}
 					}
 
@@ -969,7 +970,7 @@ package JSONLD {
 						$expandedValue	= $value;
 
 						if ($frameExpansion) {
-							println "13.4.10.4 TODO: frameExpansion support"
+							println "13.4.10.4 TODO: frameExpansion support"; # if $debug;
 						}
 					}
 
@@ -1087,7 +1088,7 @@ package JSONLD {
 					
 					unless (not(defined($expandedValue)) and $expandedProperty eq '@value' and $input_type eq '@json') {
 						println "13.4.17 setting " . Data::Dumper->Dump([$expandedValue], ['*expandedProperty']) if $debug;
-# 						println "$expandedProperty expanded value is " . Dumper($expandedValue);
+# 						println "$expandedProperty expanded value is " . Dumper($expandedValue) if $debug;
 						$result->{$expandedProperty}	= $expandedValue; # 13.4.17
 					}
 
@@ -1151,7 +1152,7 @@ package JSONLD {
 			
 				if ($tdef->{'reverse'}) {
 					# 13.13
-					println "13.13 TODO" if $debug;
+					println "13.13 TODO"; # if $debug;
 					# TODO: 13.13.1
 					# TODO: 13.13.2
 					# TODO: 13.13.3
@@ -1300,8 +1301,8 @@ package JSONLD {
 		}
 		
 		if (substr($value, 0, 1) eq '@') {
-			println "2";
-			warn "IRI expansion attempted on a term that looks like a keyword: $value"; # 2
+			println "2" if $debug;
+			warn "IRI expansion attempted on a term that looks like a keyword: $value\n"; # 2
 		}
 		
 		if (defined($localCtx) and my $v = $localCtx->{$value}) {
@@ -1382,13 +1383,15 @@ package JSONLD {
 
 		if (exists $tdef->{type_mapping}) {
 			if ($tdef->{type_mapping} eq '@id' and not(ref($value))) {
-				println '1 returning from _5_3_2_value_expand with new map containing @id IRI' if $debug;
-				return { '@id' => $self->_5_2_2_iri_expansion($activeCtx, $value, documentRelative => 1) }; # 1
+				my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $value, documentRelative => 1);
+				println "1 returning from _5_3_2_value_expand with new map containing \@id: $iri" if $debug;
+				return { '@id' => $iri }; # 1
 			}
 
 			if ($tdef->{type_mapping} eq '@vocab' and not(ref($value))) {
-				println '1 returning from _5_3_2_value_expand with new map containing vocab @id IRI' if $debug;
-				return { '@id' => $self->_5_2_2_iri_expansion($activeCtx, $value, vocab => 1, documentRelative => 1) }; # 2
+				my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $value, vocab => 1, documentRelative => 1);
+				println "1 returning from _5_3_2_value_expand with new map containing vocab \@id: $iri" if $debug;
+				return { '@id' => $iri }; # 2
 			}
 		}
 		
