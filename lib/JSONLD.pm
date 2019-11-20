@@ -30,7 +30,7 @@ package JSONLD {
 	sub expand {
 		my $self	= shift;
 		my $d		= shift;
-		warn "Expanding...";
+# 		warn "Expanding...";
 		return $self->_expand(undef, undef, $d);
 	}
 	
@@ -574,7 +574,11 @@ package JSONLD {
 			}
 			
 			println "22.3" if $debug;
-			$definition->{container_mapping}	= $container; # 22.3
+			if (ref($container) eq 'ARRAY') {
+				$definition->{container_mapping}	= $container; # 22.3
+			} else {
+				$definition->{container_mapping}	= [$container]; # 22.3
+			}
 			
 			if ($container eq '@type') {
 				println "22.4" if $debug;
@@ -712,7 +716,8 @@ package JSONLD {
 				# 5.2
 				println "5.2" if $debug;
 				println "5.2.1" if $debug;
-				my $expandedItem	= $self->_expand($activeCtx, $activeProp, $item); # 5.2.1
+				my $expandedItem	= $self->_5_1_2_expansion($activeCtx, $activeProp, $item); # 5.2.1
+				println "5.2.1 expanded item = " . Dumper($expandedItem) if $debug;
 				
 				# NOTE: 5.2.2 "container mapping" is in the term definition for active property, right? The text omits the term definition reference.
 				my $container_mapping	= $tdef->{container_mapping};
