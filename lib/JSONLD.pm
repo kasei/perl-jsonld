@@ -426,7 +426,7 @@ package JSONLD {
 			# 1
 			println "1" if $debug;
 			if ($defined->{$term}) {
-				warn "returning from _4_2_2_create_term_definition: term definition has already been created\n" if $debug;
+				println "returning from _4_2_2_create_term_definition: term definition has already been created\n" if $debug;
 				return;
 			}
 			die "cyclic_IRI_mapping";
@@ -1266,7 +1266,7 @@ package JSONLD {
 				if ($self->_cm_contains($container_mapping, '@language') and ref($value) eq 'HASH') {
 					println "13.7" if $debug;
 					println "13.7.1" if $debug;
-					my $expandedValue	= [];
+					$expandedValue	= [];
 					
 					println "13.7.2" if $debug;
 					my $direction	= $activeCtx->{default_base_direction};
@@ -1313,7 +1313,7 @@ package JSONLD {
 								delete $v->{'@language'};
 							}
 							
-							if (defined($language)) {
+							if (defined($direction)) {
 								println "13.7.4.2.5" if $debug;
 								$v->{'@direction'}	= $direction;
 							}
