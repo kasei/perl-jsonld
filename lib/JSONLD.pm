@@ -1603,7 +1603,7 @@ package JSONLD {
 			return $i; # 5
 		}
 		
-		if ($value =~ /:/) {
+		if ($value =~ /.:/) {
 			 # 6
 			println "6" if $debug;
 			println "6.1" if $debug;
