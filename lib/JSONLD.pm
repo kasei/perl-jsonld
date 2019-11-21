@@ -466,86 +466,80 @@ package JSONLD {
 		my $previous_defn	= $self->_ctx_term_defn($activeCtx, $term); # 6
 		delete $activeCtx->{terms}{$term}; # https://github.com/w3c/json-ld-api/issues/176#issuecomment-545167708
 
-# 		unless (defined($previous_defn)) {
-# 			println "7" if $debug;
-# 			# 7 ; NOTE: not entirely sure about the language here: what does the "Otherwise" language mean? "Otherwise, remove any previous definition from active context."
-# 			delete $activeCtx->{terms}{$term};
-# 		}
-
 		my $simple_term;
 		if (not(defined($value))) {
-			println "8" if $debug;
-			$value	= {'@id' => undef}; # 8
+			println "7" if $debug;
+			$value	= {'@id' => undef}; # 7
 		} elsif (not(ref($value))) {
-			# 9
-			println "9" if $debug;
+			# 8
+			println "8" if $debug;
 			$value	= {'@id' => $value};
 			$simple_term	= 1;
 		} elsif (ref($value) eq 'HASH') {
-			println "10" if $debug;
-			$simple_term	= 0; # 10
+			println "9" if $debug;
+			$simple_term	= 0; # 9
 		} else {
-			println "10" if $debug;
-			die "invalid_term_definition"; # 10
+			println "9" if $debug;
+			die "invalid_term_definition"; # 9
 		}
 		
-		println "11" if $debug;
-		my $definition	= {};	# 11
+		println "10" if $debug;
+		my $definition	= {};	# 10
 		
 		if ($value->{'@protected'}) {
+			println "11" if $debug;
+			$definition->{protected}	= 1; # 11
+			println "11 TODO processing mode of json-ld-1.0" if $debug;
+		} elsif (not exists $value->{'@protected'} and $protected) {
 			println "12" if $debug;
 			$definition->{protected}	= 1; # 12
-			println "12 TODO processing mode of json-ld-1.0" if $debug;
-		} elsif (not exists $value->{'@protected'} and $protected) {
-			println "13" if $debug;
-			$definition->{protected}	= 1; # 13
 		}
 
 		if (exists $value->{'@type'}) {
-			# 14
-			println "14" if $debug;
-			my $type	= $value->{'@type'}; # 14.1
+			# 13
+			println "13" if $debug;
+			my $type	= $value->{'@type'}; # 13.1
 			if (ref($type)) {
-				println "14.1" if $debug;
-				die "invalid_type_mapping"; # 14.1
+				println "13.1" if $debug;
+				die "invalid_type_mapping"; # 13.1
 			}
 			
-			println "14.2" if $debug;
-			$type	= $self->_5_2_2_iri_expansion($activeCtx, $type, vocab => 1, localCtx => $localCtx, 'defined' => $defined); # 14.2
+			println "13.2" if $debug;
+			$type	= $self->_5_2_2_iri_expansion($activeCtx, $type, vocab => 1, localCtx => $localCtx, 'defined' => $defined); # 13.2
 
 			if (($type eq '@json' or $type eq '@none') and $self->processing_mode eq 'json-ld-1.0') {
-				println "14.3" if $debug;
+				println "13.3" if $debug;
 				die 'invalid type mapping';
 			}
 
 			if ($type ne '@id' and $type ne '@vocab' and not($self->_is_abs_iri($type))) {
 				# TODO: handle case "nor, if processing mode is json-ld-1.1, @json nor @none"
-				println "14.4" if $debug;
-				die 'invalid type mapping'; # 14.4
+				println "13.4" if $debug;
+				die 'invalid type mapping'; # 13.4
 			}
 			
-			println "14.5" if $debug;
-			$definition->{type_mapping}	= $type; # 14.5
+			println "13.5" if $debug;
+			$definition->{type_mapping}	= $type; # 13.5
 		}
 		
 		if (exists $value->{'@reverse'}) {
-			# 15
-			println "15" if $debug;
+			# 14
+			println "14" if $debug;
 			if (exists $value->{'@id'} or exists $value->{'@nest'}) {
-				println "15.1" if $debug;
-				die 'invalid reverse property'; # 15.1
+				println "14.1" if $debug;
+				die 'invalid reverse property'; # 14.1
 			}
 			my $reverse	= $value->{'@reverse'};
 			if (ref($reverse)) {
-				println "15.2" if $debug;
-				die 'invalid IRI mapping'; # 15.2
+				println "14.2" if $debug;
+				die 'invalid IRI mapping'; # 14.2
 			}
 			if (substr($reverse, 0, 1) eq '@') {
-				println "15.3" if $debug;
-				die '@reverse value looks like a keyword: ' . $reverse; # 15.3
+				println "14.3" if $debug;
+				die '@reverse value looks like a keyword: ' . $reverse; # 14.3
 			} else {
-				 # 15.4
-				println "15.4" if $debug;
+				 # 14.4
+				println "14.4" if $debug;
 				my $m	= $self->_5_2_2_iri_expansion($activeCtx, $reverse, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
 				if (not($self->_is_abs_iri($m)) and $m !~ /^:/) {
 					die 'invalid IRI mapping';
@@ -554,8 +548,8 @@ package JSONLD {
 			}
 			
 			if (exists $value->{'@container'}) {
-				# 15.5
-				println "15.5" if $debug;
+				# 14.5
+				println "14.5" if $debug;
 				my $c	= $value->{'@container'};
 				if ($c ne '@set' and $c ne '@index' and not(defined($c))) {
 					die 'invalid reverse property';
@@ -563,11 +557,11 @@ package JSONLD {
 				$definition->{container_mapping}	= $c;
 			}
 			
-			println "15.6" if $debug;
-			$definition->{'reverse'}	= 1; # 15.6
+			println "14.6" if $debug;
+			$definition->{'reverse'}	= 1; # 14.6
 			
-			# 15.7
-			println "15.7" if $debug;
+			# 14.7
+			println "14.7" if $debug;
 			$activeCtx->{terms}{$term}	= $definition;
 			$defined->{$term}	= 1;
 			local($Data::Dumper::Indent)	= 0;
@@ -575,28 +569,29 @@ package JSONLD {
 			return;
 		}
 
-		println "16" if $debug;
+		println "15" if $debug;
 		$definition->{'reverse'}	= 0; # 15
 		
-		if (exists $value->{'@id'} and $value->{'@id'} ne $term) {
-			# 17
-			println "17" if $debug;
+		if (exists $value->{'@id'} and (not defined($value->{'@id'}) or $value->{'@id'} ne $term)) {
+			# 16
+			println "16" if $debug;
 			my $id	= $value->{'@id'};
+			warn Dumper($id);
 			if (exists $value->{'@id'} and not(defined($id))) {
-				println "17.1" if $debug;
-				# 17.1
-			} elsif (ref($id)) {
-				println "17.2" if $debug;
-				die 'invalid IRI mapping'; # 17.2
+				println "16.1" if $debug;
+				# 16.1
+			} elsif (not _is_string($id)) {
+				println "16.2" if $debug;
+				die 'invalid IRI mapping'; # 16.2
 			}
 			
-			if (not exists $keywords{$id} and substr($id, 0, 1) eq '@') {
-				println "17.3" if $debug;
-				warn "create term definition encountered an \@id that looks like a keyword: $id\n"; # 17.3
+			if (defined($id) and not exists $keywords{$id} and substr($id, 0, 1) eq '@') {
+				println "16.3" if $debug;
+				warn "create term definition encountered an \@id that looks like a keyword: $id\n"; # 16.3
 				return;
 			} else {
-				# 17.4
-				println "17.4" if $debug;
+				# 16.4
+				println "16.4" if $debug;
 				my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $id, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
 				if (not exists $keywords{$iri} and not $self->_is_abs_iri($iri) and $iri !~ /:/) {
 					die 'invalid IRI mapping';
@@ -607,41 +602,41 @@ package JSONLD {
 				$definition->{iri_mapping}	= $iri;
 			}
 			if ($term =~ /:./) {
-				println "17.5" if $debug;
+				println "16.5" if $debug;
 				my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $term, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
 				if ($iri ne $definition->{iri_mapping}) {
-					die 'invalid IRI mapping'; # 17.5 ; NOTE: the text here doesn't discuss what parameters to pass to IRI expansion
+					die 'invalid IRI mapping'; # 16.5 ; NOTE: the text here doesn't discuss what parameters to pass to IRI expansion
 				}
 			}
 			
 			if ($term !~ m{[:/]} and $simple_term and $definition->{iri_mapping} =~ m{[][:/?#@]$}) {
-				println "17.6" if $debug;
-				$definition->{prefix}	= 1; # 17.6
+				println "16.6" if $debug;
+				$definition->{prefix}	= 1; # 16.6
 			}
 		} elsif ($term =~ /:/) {
-			# 18
-			println "18" if $debug;
+			# 17
+			println "17" if $debug;
 			my ($prefix, $suffix)	= split(/:/, $term, 2);
 			if (exists $localCtx->{$prefix}) {
-				println "18.1" if $debug;
-				$self->_4_2_2_create_term_definition($activeCtx, $localCtx, $prefix, $defined); # 18.1
+				println "17.1" if $debug;
+				$self->_4_2_2_create_term_definition($activeCtx, $localCtx, $prefix, $defined); # 17.1
 			}
 			if (exists $activeCtx->{terms}{$prefix}) {
-				println "18.2" if $debug;
-				$definition->{iri_mapping}	= $activeCtx->{terms}{$prefix}{iri_mapping} . $suffix; # 18.2
+				println "17.2" if $debug;
+				$definition->{iri_mapping}	= $activeCtx->{terms}{$prefix}{iri_mapping} . $suffix; # 17.2
 			} else {
-				println "18.3" if $debug;
-				$definition->{iri_mapping}	= $term; # 18.3
+				println "17.3" if $debug;
+				$definition->{iri_mapping}	= $term; # 17.3
 			}
 		} elsif ($term =~ m{/}) {
-			# TODO: 19
-			println "19 TODO"; # if $debug;
+			# TODO: 18
+			println "18 TODO"; # if $debug;
 		} elsif ($term eq '@type') {
-			println "20" if $debug;
-			$definition->{iri_mapping}	= '@type'; # 20
+			println "19" if $debug;
+			$definition->{iri_mapping}	= '@type'; # 19
 		} else {
-			# 21 ; NOTE: this section uses a passive voice "the IRI mapping of definition is set to ..." cf. 18 where it's active: "set the IRI mapping of definition to @type"
-			println "21" if $debug;
+			# 20 ; NOTE: this section uses a passive voice "the IRI mapping of definition is set to ..." cf. 18 where it's active: "set the IRI mapping of definition to @type"
+			println "20" if $debug;
 			if (exists $activeCtx->{'@vocab'}) {
 				$definition->{iri_mapping}	= $activeCtx->{'@vocab'} . $term;
 			} else {
@@ -650,13 +645,13 @@ package JSONLD {
 		}
 		
 		if (exists $value->{'@container'}) {
-			# TODO: 22
-			println "22"; # if $debug;
+			# TODO: 21
+			println "21"; # if $debug;
 
-			println "22.1" if $debug;
-			my $container	= $value->{'@container'}; # 22.1
+			println "21.1" if $debug;
+			my $container	= $value->{'@container'}; # 21.1
 
-			# 22.1 error checking
+			# 21.1 error checking
 			my %acceptable	= map { $_ => 1 } qw(@graph @id @index @language @list @set @type);
 			if (exists $acceptable{$container}) {
 			} elsif (ref($container) eq 'ARRAY') {
@@ -678,73 +673,73 @@ package JSONLD {
 			
 			if ($self->processing_mode eq 'json-ld-1.0') {
 				if (any { $container eq $_ } qw (@graph @id @type) or ref($container)) {
-					println "22.2" if $debug;
+					println "21.2" if $debug;
 					die 'invalid container mapping';
 				}
 			}
 			
-			println "22.3" if $debug;
+			println "21.3" if $debug;
 			if (ref($container) eq 'ARRAY') {
-				$definition->{container_mapping}	= $container; # 22.3
+				$definition->{container_mapping}	= $container; # 21.3
 			} else {
-				$definition->{container_mapping}	= [$container]; # 22.3
+				$definition->{container_mapping}	= [$container]; # 21.3
 			}
 			
 			if ($container eq '@type') {
-				println "22.4" if $debug;
+				println "21.4" if $debug;
 				if (not defined($definition->{type_mapping})) {
-					println "22.4.1" if $debug;
+					println "21.4.1" if $debug;
 					$definition->{type_mapping}	= '@id';
 				}
 				
 				my $tm	= $definition->{type_mapping};
 				if ($tm ne '@id' and $tm ne '@vocab') {
-					println "22.4.2" if $debug;
+					println "21.4.2" if $debug;
 					die 'invalid type mapping';
 				}
 			}
 		}
 
 		if (exists $value->{'@index'}) {
-			# TODO: 23
-			println "23 TODO"; # if $debug;
+			# TODO: 22
+			println "22 TODO"; # if $debug;
 		}
 
 		if (exists $value->{'@context'}) {
-			println "24" if $debug;
+			println "23" if $debug;
 			if ($self->processing_mode eq 'json-ld-1.0') {
-				println "24.1" if $debug;
+				println "23.1" if $debug;
 				die 'invalid term definition';
 			}
 
-			println "24.2" if $debug;
+			println "23.2" if $debug;
 			my $context	= $value->{'@context'};
 
-			println "24.3" if $debug;
+			println "23.3" if $debug;
 			$self->_4_1_2_ctx_processing($activeCtx, $context, override_protected => 1); # discard result
 			
 			$definition->{'@context'}	= $context;	# Note: not sure about the spec text wording here: "Set the local context of definition to context." What is the "local context" of a definition?
 		}
 
 		if (exists $value->{'@language'} and not exists $value->{'@type'}) {
-			println "25" if $debug;
-			println "25.1" if $debug;
+			println "24" if $debug;
+			println "24.1" if $debug;
 			my $language	= $value->{'@language'};
 			if (defined($language) and ref($language)) {
 				die 'invalid language mapping';
 			}
 			# TODO: validate language tag against BCP47
 
-			println "25.2" if $debug;
+			println "24.2" if $debug;
 			# TODO: normalize language tag
 			$definition->{language_mapping}	= $language;
 		}
 
 		if (exists $value->{'@direction'} and not exists $value->{'@type'}) {
-			println "26" if $debug;
+			println "25" if $debug;
 			my $direction	= $value->{'@direction'};
 
-			println "26.1" if $debug;
+			println "25.1" if $debug;
 			if (not(defined($direction))) {
 			} elsif ($direction ne 'ltr' and $direction ne 'rtl') {
 				die 'invalid base direction';
@@ -754,13 +749,13 @@ package JSONLD {
 		}
 
 		if (exists $value->{'@nest'}) {
-			println "27" if $debug;
+			println "26" if $debug;
 			if ($self->processing_mode eq 'json-ld-1.0') {
-				println "27.1" if $debug;
+				println "26.1" if $debug;
 				die 'invalid term definition';
 			}
 			
-			println "27.2" if $debug;
+			println "26.2" if $debug;
 			my $nv	= $value->{'@nest'};
 			if (not(defined($nv)) or ref($nv)) {
 				die 'invalid @nest value';
@@ -771,11 +766,11 @@ package JSONLD {
 		}
 
 		if (exists $value->{'@prefix'}) {
-			# TODO: 28
-			println "28 TODO"; # if $debug;
+			# TODO: 27
+			println "27 TODO"; # if $debug;
 # 			if ($self->processing_mode eq 'json-ld-1.0' or $term =~ /:/) {
-# 				println "28.1" if $debug;
-# 				die 'invalid term definition'; # 28.1
+# 				println "27.1" if $debug;
+# 				die 'invalid term definition'; # 27.1
 # 			}
 # 			
 # 			$definition->{prefix}	= $value->{'@prefix'};
@@ -784,26 +779,27 @@ package JSONLD {
 
 		my @keys	= grep { not /^[@](id|reverse|container|context|language|nest|prefix|type)$/ } keys %$value;
 		if (scalar(@keys)) {
-			die 'invalid term definition'; # 29
+			println "28" if $debug;
+			die 'invalid term definition'; # 28
 		}
 		
 		if (not($override_protected) and $previous_defn->{protected}) {
-			# 30
-			println "30" if $debug;
+			# 29
+			println "29" if $debug;
 			my %cmp_a	= map { $_ => $definition->{$_} } grep { $_ ne 'protected' } keys %$definition;
 			my %cmp_b	= map { $_ => $previous_defn->{$_} } grep { $_ ne 'protected' } keys %$previous_defn;
 			my $j		= JSON->new->canonical(1);
 			if ($j->encode(\%cmp_a) ne $j->encode(\%cmp_b)) {
-				println "30.1" if $debug;
-				die 'protected term redefinition'; # 30.1
+				println "29.1" if $debug;
+				die 'protected term redefinition'; # 29.1
 			}
-			println "30.2" if $debug;
-			$definition	= $previous_defn; # 30.2
+			println "29.2" if $debug;
+			$definition	= $previous_defn; # 29.2
 		}
 		
-		println "31" if $debug;
-		$activeCtx->{terms}{$term}	= $definition; # 31
-		$defined->{$term}	= 1; # 31
+		println "30" if $debug;
+		$activeCtx->{terms}{$term}	= $definition; # 30
+		$defined->{$term}	= 1; # 30
 		local($Data::Dumper::Indent)	= 0;
 		println "returning from _4_2_2_create_term_definition: " . Dumper($activeCtx->{terms}{$term}) if $debug;
 		return;
