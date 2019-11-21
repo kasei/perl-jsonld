@@ -39,6 +39,7 @@ package JSONLD {
 	
 	sub _is_string {
 		my $v	= shift;
+		return 0 unless defined($v);
 		return 0 if ref($v);
 		my $sv	= svref_2object(\$v);
 		my $flags	= $sv->FLAGS;
