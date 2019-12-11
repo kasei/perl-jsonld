@@ -196,9 +196,10 @@ package JSONLD {
 			$localCtx = [$localCtx]; # 4
 		}
 		
+		println "5" if $debug;
 		foreach my $context (@$localCtx) {
-			# 5
-			println "5" if $debug;
+			my $__indent	= indent();
+			println "5 loop iteration" if $debug;
 			if (not(defined($context))) {
 				# 5.1
 				println "5.1" if $debug;
@@ -390,7 +391,7 @@ package JSONLD {
 			println "5.12" if $debug;
 			my $defined	= {}; # 5.12
 			
-			my @keys	= grep { $_ !~ /^[@](base|direction|import|language|propagate|protected|version|vocab)$/ } keys %$context;
+			my @keys	= reverse sort grep { $_ !~ /^[@](base|direction|import|language|propagate|protected|version|vocab)$/ } keys %$context;
 			println "5.13" if $debug;
 			foreach my $key (@keys) {
 				my $__indent	= indent();
@@ -429,11 +430,12 @@ package JSONLD {
 			if ($defined->{$term}) {
 				println "returning from _4_2_2_create_term_definition: term definition has already been created\n" if $debug;
 				return;
+			} elsif (exists $defined->{$term}) {
+				die "cyclic IRI mapping";
 			}
-			die "cyclic_IRI_mapping";
 		}
 		
-		println "2" if $debug;
+		println "2 [setting defined{$term} = 0]" if $debug;
 		$defined->{$term}	= 0; # 2
 
 		println "3" if $debug;
@@ -473,7 +475,7 @@ package JSONLD {
 			$value	= {'@id' => undef}; # 7
 		} elsif (not(ref($value))) {
 			# 8
-			println "8" if $debug;
+			println "8 value = {'\@id' => $value}" if $debug;
 			$value	= {'@id' => $value};
 			$simple_term	= 1;
 		} elsif (ref($value) eq 'HASH') {
@@ -562,7 +564,7 @@ package JSONLD {
 			$definition->{'reverse'}	= 1; # 14.6
 			
 			# 14.7
-			println "14.7" if $debug;
+			println "14.7 [setting defined{$term} = 1]" if $debug;
 			$activeCtx->{'terms'}{$term}	= $definition;
 			$defined->{$term}	= 1;
 			local($Data::Dumper::Indent)	= 0;
@@ -577,42 +579,44 @@ package JSONLD {
 			# 16
 			println "16" if $debug;
 			my $id	= $value->{'@id'};
-			warn Dumper($id);
+# 			warn Dumper($id);
 			if (exists $value->{'@id'} and not(defined($id))) {
 				println "16.1" if $debug;
 				# 16.1
-			} elsif (not _is_string($id)) {
-				println "16.2" if $debug;
-				die 'invalid IRI mapping'; # 16.2
-			}
-			
-			if (defined($id) and not exists $keywords{$id} and substr($id, 0, 1) eq '@') {
-				println "16.3" if $debug;
-				warn "create term definition encountered an \@id that looks like a keyword: $id\n"; # 16.3
-				return;
 			} else {
-				# 16.4
-				println "16.4" if $debug;
-				my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $id, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
-				if (not exists $keywords{$iri} and not $self->_is_abs_iri($iri) and $iri !~ /:/) {
-					die 'invalid IRI mapping';
+				if (not _is_string($id)) {
+					println "16.2" if $debug;
+					die 'invalid IRI mapping'; # 16.2
 				}
-				if ($iri eq '@context') {
-					die 'invalid keyword alias';
-				}
-				$definition->{'iri_mapping'}	= $iri;
-			}
-			if ($term =~ /:./) {
-				println "16.5" if $debug;
-				my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $term, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
-				if ($iri ne $definition->{'iri_mapping'}) {
-					die 'invalid IRI mapping'; # 16.5 ; NOTE: the text here doesn't discuss what parameters to pass to IRI expansion
-				}
-			}
 			
-			if ($term !~ m{[:/]} and $simple_term and $definition->{'iri_mapping'} =~ m{[][:/?#@]$}) {
-				println "16.6" if $debug;
-				$definition->{'prefix'}	= 1; # 16.6
+				if (defined($id) and not exists $keywords{$id} and substr($id, 0, 1) eq '@') {
+					println "16.3" if $debug;
+					warn "create term definition encountered an \@id that looks like a keyword: $id\n"; # 16.3
+					return;
+				} else {
+					# 16.4
+					println "16.4" if $debug;
+					my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $id, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
+					if (not exists $keywords{$iri} and not $self->_is_abs_iri($iri) and $iri !~ /:/) {
+						die 'invalid IRI mapping';
+					}
+					if ($iri eq '@context') {
+						die 'invalid keyword alias';
+					}
+					$definition->{'iri_mapping'}	= $iri;
+				}
+				if ($term =~ /.:./ or index($term, '/') >= 0) {
+					println "16.5" if $debug;
+					my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $term, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
+					if ($iri ne $definition->{'iri_mapping'}) {
+						die 'invalid IRI mapping'; # 16.5 ; NOTE: the text here doesn't discuss what parameters to pass to IRI expansion
+					}
+				}
+			
+				if ($term !~ m{[:/]} and $simple_term and $definition->{'iri_mapping'} =~ m{[][:/?#@]$}) {
+					println "16.6" if $debug;
+					$definition->{'prefix'}	= 1; # 16.6
+				}
 			}
 		} elsif ($term =~ /:/) {
 			# 17
@@ -817,7 +821,7 @@ package JSONLD {
 			$definition	= $previous_defn; # 29.2
 		}
 		
-		println "30" if $debug;
+		println "30 [setting defined{$term} = 1]" if $debug;
 		$activeCtx->{'terms'}{$term}	= $definition; # 30
 		$defined->{$term}	= 1; # 30
 		local($Data::Dumper::Indent)	= 0;
@@ -928,8 +932,9 @@ package JSONLD {
 			$activeCtx = $self->_4_1_2_ctx_processing($activeCtx, $property_scoped_ctx); # 8
 		}
 		
-		if (my $c = $element->{'@context'}) {
+		if (exists $element->{'@context'}) {
 			println "9" if $debug;
+			my $c = $element->{'@context'};
 			$activeCtx = $self->_4_1_2_ctx_processing($activeCtx, $c); # 9
 		}
 		
@@ -1426,7 +1431,7 @@ package JSONLD {
 					$expandedValue	= $self->_5_1_2_expansion($activeCtx, $key, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.9
 				}
 			
-				warn Dumper($expandedValue);
+# 				warn Dumper($expandedValue);
 				if (not(defined($expandedValue))) {
 					println "13.10 going to next element key" if $debug;
 					next; # 13.10
@@ -1627,6 +1632,9 @@ package JSONLD {
 		my $documentRelative	= $args{documentRelative} // 0;
 		my $localCtx			= $args{localCtx} // {};
 		my $defined				= $args{'defined'} // {};
+		local($Data::Dumper::Indent)	= 0;
+		println(Data::Dumper->Dump([$localCtx], ['*localCtx'])) if $debug;
+		println(Data::Dumper->Dump([$defined], ['*defined'])) if $debug;
 		
 		# 5.2.2 algorithm
 		
