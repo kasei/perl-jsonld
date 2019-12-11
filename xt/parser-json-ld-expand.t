@@ -19,7 +19,7 @@ our $debug	= 0;
 $JSONLD::debug	= $debug;
 our $PATTERN;
 if ($debug) {
-	$PATTERN = qr/t0005/;
+	$PATTERN = qr/t0032/;
 } else {
 	$PATTERN	= /./;
 }
@@ -68,7 +68,7 @@ foreach my $t (@$tests) {
 		my $expected	= $j->encode(load_json($outfile));
 		if ($debug) {
 			warn "Input file: $infile\n";
-			warn "INPUT:\n===============\n" . Dumper($data);
+			warn "INPUT:\n===============\n" . JSON->new->pretty->encode($data); # Dumper($data);
 		}
 		my $expanded	= eval { $jld->expand($data) };
 		if ($@) {
@@ -98,7 +98,7 @@ foreach my $t (@$tests) {
 		}
 		is($got, $expected, "$id: $name");
 	} elsif ($types{'jld:NegativeEvaluationTest'}){
-		diag("TODO: NegativeEvaluationTest $id\n");
+		diag("IGNORING NegativeEvaluationTest $id\n");
 	} else {
 		diag("Not a recognized evaluation test: " . Dumper(\@types));
 		next;

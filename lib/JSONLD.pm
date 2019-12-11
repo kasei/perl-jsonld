@@ -127,14 +127,14 @@ package JSONLD {
 		my $term	= shift;
 		confess "Bad context type in _ctx_term_defn: " . ref($ctx) unless (ref($ctx) eq 'HASH');
 		no warnings 'uninitialized';
-		return $ctx->{terms}{$term};
+		return $ctx->{'terms'}{$term};
 	}
 
 	sub _ctx_contains_protected_terms {
 		my $self	= shift;
 		my $ctx		= shift;
-		foreach my $term (keys %{ $ctx->{terms} }) {
-			return 1 if $ctx->{terms}{$term}{protected};
+		foreach my $term (keys %{ $ctx->{'terms'} }) {
+			return 1 if $ctx->{'terms'}{$term}{'protected'};
 		}
 		return 0;
 	}
@@ -186,9 +186,9 @@ package JSONLD {
 			$propagate	= ($localCtx->{'@propagate'} eq 'true'); # 2
 		}
 		
-		if (not($propagate) and not exists $result->{previous_context}) {
+		if (not($propagate) and not exists $result->{'previous_context'}) {
 			println "3" if $debug;
-			$result->{previous_context}	= $activeCtx; # 3
+			$result->{'previous_context'}	= $activeCtx; # 3
 		}
 		
 		if (ref($localCtx) ne 'ARRAY') {
@@ -210,7 +210,7 @@ package JSONLD {
 					my $prev	= $result;
 					$result	= {};
 					if ($propagate) {
-						$result->{previous_context}	= $prev;
+						$result->{'previous_context'}	= $prev;
 					}
 					next;
 				}
@@ -465,7 +465,7 @@ package JSONLD {
 		
 		println "6" if $debug;
 		my $previous_defn	= $self->_ctx_term_defn($activeCtx, $term); # 6
-		delete $activeCtx->{terms}{$term}; # https://github.com/w3c/json-ld-api/issues/176#issuecomment-545167708
+		delete $activeCtx->{'terms'}{$term}; # https://github.com/w3c/json-ld-api/issues/176#issuecomment-545167708
 
 		my $simple_term;
 		if (not(defined($value))) {
@@ -489,11 +489,11 @@ package JSONLD {
 		
 		if ($value->{'@protected'}) {
 			println "11" if $debug;
-			$definition->{protected}	= 1; # 11
+			$definition->{'protected'}	= 1; # 11
 			println "11 TODO processing mode of json-ld-1.0" if $debug;
 		} elsif (not exists $value->{'@protected'} and $protected) {
 			println "12" if $debug;
-			$definition->{protected}	= 1; # 12
+			$definition->{'protected'}	= 1; # 12
 		}
 
 		if (exists $value->{'@type'}) {
@@ -520,7 +520,7 @@ package JSONLD {
 			}
 			
 			println "13.5" if $debug;
-			$definition->{type_mapping}	= $type; # 13.5
+			$definition->{'type_mapping'}	= $type; # 13.5
 		}
 		
 		if (exists $value->{'@reverse'}) {
@@ -545,7 +545,7 @@ package JSONLD {
 				if (not($self->_is_abs_iri($m)) and $m !~ /^:/) {
 					die 'invalid IRI mapping';
 				}
-				$definition->{iri_mapping}	= $m;
+				$definition->{'iri_mapping'}	= $m;
 			}
 			
 			if (exists $value->{'@container'}) {
@@ -555,7 +555,7 @@ package JSONLD {
 				if ($c ne '@set' and $c ne '@index' and not(defined($c))) {
 					die 'invalid reverse property';
 				}
-				$definition->{container_mapping}	= $c;
+				$definition->{'container_mapping'}	= $c;
 			}
 			
 			println "14.6" if $debug;
@@ -563,10 +563,10 @@ package JSONLD {
 			
 			# 14.7
 			println "14.7" if $debug;
-			$activeCtx->{terms}{$term}	= $definition;
+			$activeCtx->{'terms'}{$term}	= $definition;
 			$defined->{$term}	= 1;
 			local($Data::Dumper::Indent)	= 0;
-			println "returning from _4_2_2_create_term_definition: " . Dumper($activeCtx->{terms}{$term}) if $debug;
+			println "returning from _4_2_2_create_term_definition: " . Dumper($activeCtx->{'terms'}{$term}) if $debug;
 			return;
 		}
 
@@ -600,19 +600,19 @@ package JSONLD {
 				if ($iri eq '@context') {
 					die 'invalid keyword alias';
 				}
-				$definition->{iri_mapping}	= $iri;
+				$definition->{'iri_mapping'}	= $iri;
 			}
 			if ($term =~ /:./) {
 				println "16.5" if $debug;
 				my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $term, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
-				if ($iri ne $definition->{iri_mapping}) {
+				if ($iri ne $definition->{'iri_mapping'}) {
 					die 'invalid IRI mapping'; # 16.5 ; NOTE: the text here doesn't discuss what parameters to pass to IRI expansion
 				}
 			}
 			
-			if ($term !~ m{[:/]} and $simple_term and $definition->{iri_mapping} =~ m{[][:/?#@]$}) {
+			if ($term !~ m{[:/]} and $simple_term and $definition->{'iri_mapping'} =~ m{[][:/?#@]$}) {
 				println "16.6" if $debug;
-				$definition->{prefix}	= 1; # 16.6
+				$definition->{'prefix'}	= 1; # 16.6
 			}
 		} elsif ($term =~ /:/) {
 			# 17
@@ -622,24 +622,24 @@ package JSONLD {
 				println "17.1" if $debug;
 				$self->_4_2_2_create_term_definition($activeCtx, $localCtx, $prefix, $defined); # 17.1
 			}
-			if (exists $activeCtx->{terms}{$prefix}) {
+			if (exists $activeCtx->{'terms'}{$prefix}) {
 				println "17.2" if $debug;
-				$definition->{iri_mapping}	= $activeCtx->{terms}{$prefix}{iri_mapping} . $suffix; # 17.2
+				$definition->{'iri_mapping'}	= $activeCtx->{'terms'}{$prefix}{'iri_mapping'} . $suffix; # 17.2
 			} else {
 				println "17.3" if $debug;
-				$definition->{iri_mapping}	= $term; # 17.3
+				$definition->{'iri_mapping'}	= $term; # 17.3
 			}
 		} elsif ($term =~ m{/}) {
 			# TODO: 18
 			println "18 TODO"; # if $debug;
 		} elsif ($term eq '@type') {
 			println "19" if $debug;
-			$definition->{iri_mapping}	= '@type'; # 19
+			$definition->{'iri_mapping'}	= '@type'; # 19
 		} else {
 			# 20 ; NOTE: this section uses a passive voice "the IRI mapping of definition is set to ..." cf. 18 where it's active: "set the IRI mapping of definition to @type"
 			println "20" if $debug;
 			if (exists $activeCtx->{'@vocab'}) {
-				$definition->{iri_mapping}	= $activeCtx->{'@vocab'} . $term;
+				$definition->{'iri_mapping'}	= $activeCtx->{'@vocab'} . $term;
 			} else {
 				die 'invalid IRI mapping';
 			}
@@ -681,19 +681,19 @@ package JSONLD {
 			
 			println "21.3" if $debug;
 			if (ref($container) eq 'ARRAY') {
-				$definition->{container_mapping}	= $container; # 21.3
+				$definition->{'container_mapping'}	= $container; # 21.3
 			} else {
-				$definition->{container_mapping}	= [$container]; # 21.3
+				$definition->{'container_mapping'}	= [$container]; # 21.3
 			}
 			
 			if ($container eq '@type') {
 				println "21.4" if $debug;
-				if (not defined($definition->{type_mapping})) {
+				if (not defined($definition->{'type_mapping'})) {
 					println "21.4.1" if $debug;
-					$definition->{type_mapping}	= '@id';
+					$definition->{'type_mapping'}	= '@id';
 				}
 				
-				my $tm	= $definition->{type_mapping};
+				my $tm	= $definition->{'type_mapping'};
 				if ($tm ne '@id' and $tm ne '@vocab') {
 					println "21.4.2" if $debug;
 					die 'invalid type mapping';
@@ -702,8 +702,22 @@ package JSONLD {
 		}
 
 		if (exists $value->{'@index'}) {
-			# TODO: 22
-			println "22 TODO"; # if $debug;
+			println "22" if $debug;
+			my $container_mapping	= $definition->{'container_mapping'};
+			if ($self->processing_mode eq 'json-ld-1.0' or not $self->_cm_contains($container_mapping, '@index')) {
+				println "22.1" if $debug;
+				die 'invalid term definition';
+			}
+
+			println "22.2" if $debug;
+			my $index	= $value->{'@index'};
+			my $expanded	= $self->_5_2_2_iri_expansion($activeCtx, $index);
+			unless ($self->_is_iri($expanded)) {
+				die 'invalid term definition';
+			}
+			
+			println "22.3" if $debug;
+			$definition->{'index_mapping'}	= $index;
 		}
 
 		if (exists $value->{'@context'}) {
@@ -733,7 +747,7 @@ package JSONLD {
 
 			println "24.2" if $debug;
 			# TODO: normalize language tag
-			$definition->{language_mapping}	= $language;
+			$definition->{'language_mapping'}	= $language;
 		}
 
 		if (exists $value->{'@direction'} and not exists $value->{'@type'}) {
@@ -746,7 +760,7 @@ package JSONLD {
 				die 'invalid base direction';
 			}
 			
-			$definition->{direction_mapping}	= $direction;
+			$definition->{'direction_mapping'}	= $direction;
 		}
 
 		if (exists $value->{'@nest'}) {
@@ -763,28 +777,33 @@ package JSONLD {
 			} elsif (exists $keywords{$nv} and $nv ne '@nest') {
 				die 'invalid @nest value';
 			}
-			$definition->{nest_value}	= $nv;
+			$definition->{'nest_value'}	= $nv;
 		}
 
 		if (exists $value->{'@prefix'}) {
-			# TODO: 27
-			println "27 TODO"; # if $debug;
-# 			if ($self->processing_mode eq 'json-ld-1.0' or $term =~ /:/) {
-# 				println "27.1" if $debug;
-# 				die 'invalid term definition'; # 27.1
-# 			}
-# 			
-# 			$definition->{prefix}	= $value->{'@prefix'};
+			println "27" if $debug;
+			if ($self->processing_mode eq 'json-ld-1.0' or $term =~ m{[:/]}) {
+				println "27.1" if $debug;
+				die 'invalid term definition'; # 27.1
+			}
 			
+			println "27.2" if $debug;
+			$definition->{'prefix'}	= $value->{'@prefix'};
+			# TODO: check if this value is a boolean. if it is NOT, die 'invalid @prefix value';
+			
+			if ($definition->{'prefix'} and exists $keywords{$definition->{'iri_mapping'}}) {
+				println "27.3" if $debug;
+				die 'invalid term definition';
+			}
 		}
 
-		my @keys	= grep { not /^[@](id|reverse|container|context|language|nest|prefix|type)$/ } keys %$value;
+		my @keys	= grep { not m/^[@](id|reverse|container|context|language|nest|prefix|type)$/ } keys %$value;
 		if (scalar(@keys)) {
 			println "28" if $debug;
 			die 'invalid term definition'; # 28
 		}
 		
-		if (not($override_protected) and $previous_defn->{protected}) {
+		if (not($override_protected) and $previous_defn->{'protected'}) {
 			# 29
 			println "29" if $debug;
 			my %cmp_a	= map { $_ => $definition->{$_} } grep { $_ ne 'protected' } keys %$definition;
@@ -799,10 +818,10 @@ package JSONLD {
 		}
 		
 		println "30" if $debug;
-		$activeCtx->{terms}{$term}	= $definition; # 30
+		$activeCtx->{'terms'}{$term}	= $definition; # 30
 		$defined->{$term}	= 1; # 30
 		local($Data::Dumper::Indent)	= 0;
-		println "returning from _4_2_2_create_term_definition: " . Dumper($activeCtx->{terms}{$term}) if $debug;
+		println "returning from _4_2_2_create_term_definition: " . Dumper($activeCtx->{'terms'}{$term}) if $debug;
 		return;
 	}
 	
@@ -868,7 +887,7 @@ package JSONLD {
 				println "5.2.1 expanded item = " . Dumper($expandedItem) if $debug;
 				
 				# NOTE: 5.2.2 "container mapping" is in the term definition for active property, right? The text omits the term definition reference.
-				my $container_mapping	= $tdef->{container_mapping};
+				my $container_mapping	= $tdef->{'container_mapping'};
 #				if (any { $_ eq '@list'} @$container_mapping and ref($expandedItem) eq 'ARRAY') {
 				if ($self->_cm_contains($container_mapping, '@list')  and ref($expandedItem) eq 'ARRAY') {
 					println "5.2.2" if $debug;
@@ -892,7 +911,7 @@ package JSONLD {
 		println "6" if $debug;
 		die "Unexpected non-map encountered during expansion: $element" unless (ref($element) eq 'HASH'); # 6; assert
 
-		if (my $prevCtx = $activeCtx->{previous_context}) {
+		if (my $prevCtx = $activeCtx->{'previous_context'}) {
 			unless ($fromMap) {
 				unless (exists $element->{'@value'}) {
 					my @keys	= keys %$element;
@@ -985,7 +1004,6 @@ package JSONLD {
 					# 13.4
 					println "13.4 keyword: $expandedProperty" if $debug;
 					
-					# TODO: 13.4.1
 					if (defined($activeProp) and $activeProp eq '@reverse') {
 						println "13.4.1" if $debug;
 						die 'invalid reverse property map'; # 13.4.1
@@ -1254,8 +1272,8 @@ package JSONLD {
 
 				my $tdef	= $self->_ctx_term_defn($activeCtx, $key);
 				println "13.5" if $debug;
-				my $container_mapping	= $tdef->{container_mapping}; # 13.5
-				if (exists($tdef->{type_mapping}) and $tdef->{type_mapping} eq '@json') {
+				my $container_mapping	= $tdef->{'container_mapping'}; # 13.5
+				if (exists($tdef->{'type_mapping'}) and $tdef->{'type_mapping'} eq '@json') {
 					println "13.6" if $debug;
 					$expandedValue	= { '@value' => $value, '@type' => '@json' }; # 13.6
 				}
@@ -1266,11 +1284,11 @@ package JSONLD {
 					$expandedValue	= [];
 					
 					println "13.7.2" if $debug;
-					my $direction	= $activeCtx->{default_base_direction};
+					my $direction	= $activeCtx->{'default_base_direction'};
 					
-					if (exists $tdef->{direction_mapping}) {
+					if (exists $tdef->{'direction_mapping'}) {
 						println "13.7.3" if $debug;
-						$direction	= $tdef->{direction_mapping};
+						$direction	= $tdef->{'direction_mapping'};
 					}
 					
 					println "13.7.4" if $debug;
@@ -1326,7 +1344,7 @@ package JSONLD {
 					my $expandedValue	= [];
 					
 					println "13.8.2" if $debug;
-					my $index_key	= $tdef->{index_mapping} // '@index';
+					my $index_key	= $tdef->{'index_mapping'} // '@index';
 					
 					println "13.8.3" if $debug;
 					foreach my $index (sort keys %$value) {
@@ -1336,7 +1354,7 @@ package JSONLD {
 						my $map_context;
 						if ($self->_cm_contains_any($container_mapping, '@id', '@type')) {
 							println "13.8.3.1" if $debug;
-							$map_context	= $activeCtx->{previous_context} // $activeCtx;
+							$map_context	= $activeCtx->{'previous_context'} // $activeCtx;
 						} else {
 							$map_context	= $activeCtx;
 						}
@@ -1371,8 +1389,18 @@ package JSONLD {
 							}
 
 							if ($self->_cm_contains($container_mapping, '@index') and $index_key ne '@index' and not exists $item->{'@index'} and $expanded_index ne '@none') {
-								println "13.8.3.7.2 TODO"; # if $debug;
+								println "13.8.3.7.2" if $debug;
 								my $index_property_values	= $expanded_index;
+								if (exists $item->{$index_key}) {
+									$index_property_values	.= $item->{$index_key};
+								}
+								$item->{$expanded_index}	= $index_property_values;
+								if ($self->_is_value_object($item)) {
+									my @keys	= sort keys %$item;
+									if (scalar(@keys) != 2) {
+										die 'invalid value object';
+									}
+								}
 							} elsif ($self->_cm_contains($container_mapping, '@index') and not exists $item->{'@index'} and $expanded_index ne '@none') {
 								println "13.8.3.7.3" if $debug;
 								$item->{'@index'}	= $index;
@@ -1381,7 +1409,12 @@ package JSONLD {
 								$expanded_index	= $self->_5_2_2_iri_expansion($activeCtx, $index, documentRelative => 1);
 								$item->{'@id'}	= $expanded_index;
 							} elsif ($self->_cm_contains($container_mapping, '@type')) {
-								println "13.8.3.7.5 TODO"; # if $debug;
+								println "13.8.3.7.5" if $debug;
+								my $types	= $expanded_index;
+								if (exists $item->{'@type'} and $expanded_index ne '@none') {
+									$types	.= $item->{'@type'};
+								}
+								$item->{'@type'}	= $types;
 							}
 							
 							println "13.8.3.7.6" if $debug;
@@ -1429,11 +1462,35 @@ package JSONLD {
 			
 				if ($tdef->{'reverse'}) {
 					# 13.13
-					println "13.13 TODO"; # if $debug;
-					# TODO: 13.13.1
-					# TODO: 13.13.2
-					# TODO: 13.13.3
-					# TODO: 13.13.4
+					println "13.13" if $debug;
+					unless (exists $result->{'@reverse'}) {
+						println "13.13.1" if $debug;
+						$result->{'@reverse'}	= {};
+					}
+					
+					println "13.13.2" if $debug;
+					my $reverse_map	= $result->{'@reverse'};
+					
+					if (ref($expandedValue) ne 'ARRAY') {
+						println "13.13.3" if $debug;
+						$expandedValue	= [$expandedValue];
+					}
+					
+					foreach my $item (@$expandedValue) {
+						println "13.13.4" if $debug;
+						if ($self->_is_value_object($item) or $self->_is_list_object($item)) {
+							println "13.13.4.1" if $debug;
+							die 'invalid reverse property value';
+						}
+						
+						unless (exists $reverse_map->{$expandedProperty}) {
+							println "13.13.4.2" if $debug;
+							$reverse_map->{$expandedProperty}	= [];
+						}
+						
+						println "13.13.4.3" if $debug;
+						push(@{ $reverse_map->{$expandedProperty} }, $item);
+					}
 				} else {
 					# 13.14
 					println "13.14" if $debug;
@@ -1456,12 +1513,13 @@ package JSONLD {
 					println "13.15.1" if $debug;
 					my $nested_values	= $nests->{$nesting_key} // []; # 13.15.1
 					die "must be an array: $nested_values" unless (ref($nested_values) eq 'ARRAY');
+
+					println "13.15.2" if $debug;
 					foreach my $nested_value (@$nested_values) {
-						# 13.15.2
-						println "13.15.2" if $debug;
-						die 'invalid @nest value' if (ref($nested_value) ne 'HASH'); # 13.15.2.1
-						# TODO: 13.15.2.1 "[If] any key within nested value expands to @value, an invalid @nest value error has been detected and processing is aborted"
+						my $__indent	= indent();
+						println "13.15.2 loop iteration" if $debug;
 						println "13.15.2.1" if $debug;
+						die 'invalid @nest value' if (ref($nested_value) ne 'HASH'); # 13.15.2.1
 						
 						println "13.15.2.2" if $debug;
 						push(@elements, $nested_value); # 13.15.2.2
@@ -1590,7 +1648,7 @@ package JSONLD {
 		}
 
 		if (my $tdef = $self->_ctx_term_defn($activeCtx, $value)) {
-			my $i	= $tdef->{iri_mapping};
+			my $i	= $tdef->{'iri_mapping'};
 			if ($keywords{$i}) {
 				println "4 returning from _5_2_2_iri_expansion with a keyword" if $debug;
 				return $i; # 4
@@ -1598,7 +1656,7 @@ package JSONLD {
 		}
 		
 		if ($vocab and my $tdef = $self->_ctx_term_defn($activeCtx, $value)) {
-			my $i	= $tdef->{iri_mapping};
+			my $i	= $tdef->{'iri_mapping'};
 			println "5 returning from _5_2_2_iri_expansion with iri mapping from active context: $i" if $debug;
 			return $i; # 5
 		}
@@ -1620,8 +1678,8 @@ package JSONLD {
 			}
 			
 			my $tdef	= $self->_ctx_term_defn($activeCtx, $prefix);
-			if ($tdef and $tdef->{iri_mapping} and $tdef->{prefix}) {
-				my $i	= $tdef->{iri_mapping} . $suffix;
+			if ($tdef and $tdef->{'iri_mapping'} and $tdef->{'prefix'}) {
+				my $i	= $tdef->{'iri_mapping'} . $suffix;
 				println "6.4 returning from _5_2_2_iri_expansion with concatenated iri mapping and suffix: $i" if $debug;
 				return $i;
 			}
@@ -1658,14 +1716,14 @@ package JSONLD {
 		
 		my $tdef	= $self->_ctx_term_defn($activeCtx, $activeProp);
 
-		if (exists $tdef->{type_mapping}) {
-			if ($tdef->{type_mapping} eq '@id' and not(ref($value))) {
+		if (exists $tdef->{'type_mapping'}) {
+			if ($tdef->{'type_mapping'} eq '@id' and not(ref($value))) {
 				my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $value, documentRelative => 1);
 				println "1 returning from _5_3_2_value_expand with new map containing \@id: $iri" if $debug;
 				return { '@id' => $iri }; # 1
 			}
 
-			if ($tdef->{type_mapping} eq '@vocab' and not(ref($value))) {
+			if ($tdef->{'type_mapping'} eq '@vocab' and not(ref($value))) {
 				my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $value, vocab => 1, documentRelative => 1);
 				println "1 returning from _5_3_2_value_expand with new map containing vocab \@id: $iri" if $debug;
 				return { '@id' => $iri }; # 2
@@ -1675,17 +1733,17 @@ package JSONLD {
 		println "3" if $debug;
 		my $result	= { '@value' => $value }; # 3
 		
-		my $tm	= $tdef->{type_mapping};
-		if (exists($tdef->{type_mapping}) and $tm ne '@id' and $tm ne '@vocab' and $tm ne '@none') {
+		my $tm	= $tdef->{'type_mapping'};
+		if (exists($tdef->{'type_mapping'}) and $tm ne '@id' and $tm ne '@vocab' and $tm ne '@none') {
 			println "4" if $debug;
 			$result->{'@type'}	= $tm; # 4
 		} elsif (_is_string($value)) { # not(ref($value))) {
 			println "5" if $debug;
 			println "5.1" if $debug;
-			my $language	= (exists $tdef->{language_mapping}) ? $tdef->{language_mapping} : $activeCtx->{'@language'}; # 5.1
+			my $language	= (exists $tdef->{'language_mapping'}) ? $tdef->{'language_mapping'} : $activeCtx->{'@language'}; # 5.1
 
 			println "5.2" if $debug;
-			my $direction	= $tdef->{direction_mapping} // $activeCtx->{default_base_direction}; # 5.2
+			my $direction	= $tdef->{'direction_mapping'} // $activeCtx->{'default_base_direction'}; # 5.2
 			
 			if (defined($language)) {
 				println "5.3" if $debug;
