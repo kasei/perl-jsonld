@@ -157,6 +157,13 @@ package JSONLD {
 		return (exists $value->{'@value'});
 	}
 
+	sub _is_default_object {
+		my $self	= shift;
+		my $value	= shift;
+		return 0 unless (ref($value) eq 'HASH');
+		return (exists $value->{'@default'});
+	}
+
 	sub _is_list_object {
 		my $self	= shift;
 		my $value	= shift;
@@ -583,7 +590,7 @@ package JSONLD {
 			if (exists $value->{'@id'} and not(defined($id))) {
 				println "16.1" if $debug;
 				# 16.1
-			} else {
+			} else { # https://github.com/w3c/json-ld-api/issues/241
 				if (not _is_string($id)) {
 					println "16.2" if $debug;
 					die 'invalid IRI mapping'; # 16.2
@@ -607,6 +614,7 @@ package JSONLD {
 				}
 				if ($term =~ /.:./ or index($term, '/') >= 0) {
 					println "16.5" if $debug;
+					$defined->{$term}	= 1; # https://github.com/w3c/json-ld-api/issues/245
 					my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $term, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
 					if ($iri ne $definition->{'iri_mapping'}) {
 						die 'invalid IRI mapping'; # 16.5 ; NOTE: the text here doesn't discuss what parameters to pass to IRI expansion
@@ -618,7 +626,7 @@ package JSONLD {
 					$definition->{'prefix'}	= 1; # 16.6
 				}
 			}
-		} elsif ($term =~ /:/) {
+		} elsif ($term =~ /.:/) {
 			# 17
 			println "17" if $debug;
 			my ($prefix, $suffix)	= split(/:/, $term, 2);
@@ -663,21 +671,25 @@ package JSONLD {
 				if (scalar(@$container) == 1) {
 					my ($c)	= @$container;
 					unless (exists $acceptable{$c}) {
+						println "21.1(a)" if $debug;
 						die 'invalid container mapping';
 					}
-				} elsif (any { $_ eq '@graph' } @$container and any { $_ =~ /^[@](id|index)$/ } @$container) {
+				} elsif (any { $_ =~ /^[@](id|index)$/ } @$container) { # any { $_ eq '@graph' } @$container
 					
-				} elsif (any { $_ eq '@set' } @$container and any { $_ =~ /^[@](id|index|type|language)$/ } @$container) {
+				} elsif (any { $_ eq '@set' } @$container and any { $_ =~ /^[@](id|index|type|language|graph)$/ } @$container) { # https://github.com/w3c/json-ld-api/issues/242
 					
 				} else {
+					warn Dumper($container);
+					println "21.1(b)" if $debug;
 					die 'invalid container mapping';
 				}
 			} else {
+				println "21.1(c)" if $debug;
 				die 'invalid container mapping';
 			}
 			
 			if ($self->processing_mode eq 'json-ld-1.0') {
-				if (any { $container eq $_ } qw (@graph @id @type) or ref($container)) {
+				if (any { $container eq $_ } qw(@graph @id @type) or ref($container)) {
 					println "21.2" if $debug;
 					die 'invalid container mapping';
 				}
@@ -834,7 +846,10 @@ package JSONLD {
 		my $activeCtx	= shift;
 		my $activeProp	= shift;
 		my $element		= shift;
-		println "ENTER    =================> _5_1_2_expansion('$activeProp')" if $debug;
+		{
+			no warnings 'uninitialized';
+			println "ENTER    =================> _5_1_2_expansion('$activeProp')" if $debug;
+		}
 		my $__indent	= indent();
 		local($Data::Dumper::Indent)	= 0;
 		println(Data::Dumper->Dump([$activeCtx], ['activeCtx'])) if $debug;
@@ -939,7 +954,7 @@ package JSONLD {
 		}
 		
 		println "10" if $debug;
-		my $type_scoped_ctx	= $activeCtx; # 10
+		my $type_scoped_ctx	= clone($activeCtx); # 10
 		
 		println "11" if $debug;
 		foreach my $key (sort keys %$element) {
@@ -965,7 +980,7 @@ package JSONLD {
 					my $tdef	= $self->_ctx_term_defn($activeCtx, $term);
 					if (my $c = $tdef->{'@context'}) {
 						println "11.2" if $debug;
-						$activeCtx	= $self->_4_1_2_ctx_processing($activeCtx, $c, propagate => 1); # 11.2
+						$activeCtx	= $self->_4_1_2_ctx_processing($activeCtx, $c, propagate => 0); # https://github.com/w3c/json-ld-api/issues/246
 					}
 				}
 			}
@@ -997,8 +1012,12 @@ package JSONLD {
 					println "13.1 going to next element key" if $debug;
 					next; # 13.1
 				}
+				local($Data::Dumper::Indent)	= 1;
+				println(Data::Dumper->Dump([$activeCtx], ['activeCtx'])) if $debug;
+				
 				println "13.2" if $debug;
 				my $expandedProperty	= $self->_5_2_2_iri_expansion($activeCtx, $key, vocab => 1); # 13.2
+				println(Data::Dumper->Dump([$expandedProperty], ['expandedProperty'])) if $debug;
 				if (not(defined($expandedProperty)) or ($expandedProperty !~ /:/ and not exists $keywords{$expandedProperty})) {
 					println "13.3 going to next element key" if $debug;
 					next; # 13.3
@@ -1025,184 +1044,200 @@ package JSONLD {
 					# NOTE: another case of an "Otherwise" applying to a partial conjunction
 					if ($expandedProperty eq '@id') {
 						if (ref($value)) {
-							println "13.4.4 invalid" if $debug;
+							println "13.4.3 invalid" if $debug;
 							die 'invalid @id value';
 						} else {
-							println "13.4.4" if $debug;
+							println "13.4.3" if $debug;
 							$expandedValue	= $self->_5_2_2_iri_expansion($activeCtx, $value, documentRelative => 1);
-							println "13.4.4 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+							println "13.4.3 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 						}
 					}
 
 					if ($expandedProperty eq '@type') {
+						println "13.4.4" if $debug;
 						my $is_string = not(ref($value));
 						my $is_array	= ref($value) eq 'ARRAY';
 						my $is_array_of_strings	= ($is_array and all { not(ref($_)) } @$value);
 						if (not($is_string) and not($is_array_of_strings)) {
-							println "13.4.5 invalid" if $debug;
+							println "13.4.4.1 invalid" if $debug;
 							die 'invalid type value';
+						}
+						
+						if (ref($value) eq 'HASH' and scalar(%$value) == 0) {
+							println "13.4.4.2" if $debug;
+							$expandedValue	= $value;
+							println "13.4.4.2 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+						} elsif ($self->_is_default_object($value)) {
+							println "13.4.4.3" if $debug;
+							$expandedValue	= { '@default' => $self->_5_2_2_iri_expansion($type_scoped_ctx, $value, vocab => 1, documentRelative => 1) };
+							println "13.4.4.3 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 						} else {
-							# 13.4.5
-							println "13.4.5" if $debug;
-							if ($is_string) {
-								$expandedValue	= $self->_5_2_2_iri_expansion($type_scoped_ctx, $value, vocab => 1, documentRelative => 1);
+							println "13.4.4.4" if $debug;
+							if (ref($value)) {
+								$expandedValue	= [map {$self->_5_2_2_iri_expansion($type_scoped_ctx, $_, vocab => 1, documentRelative => 1)} @$value];
 							} else {
-								my @values	= @$value;
-								$expandedValue	= [map {
-									$self->_5_2_2_iri_expansion($type_scoped_ctx, $_, vocab => 1, documentRelative => 1)
-								} @values];
+								$expandedValue	= $self->_5_2_2_iri_expansion($type_scoped_ctx, $value, vocab => 1, documentRelative => 1);
 							}
-							if (exists $result->{'@type'}) {
-								my $already	= $result->{'@type'};
-								my @types	= (ref($already) eq 'ARRAY') ? @$already : ($already);
-								unshift(@$expandedValue, @types);
+							println "13.4.4.4 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+						}
+						
+						if (my $t = $result->{'@type'}) {
+							println "13.4.4.5" if $debug;
+							if (ref($expandedValue) ne 'ARRAY') {
+								$expandedValue	= [$expandedValue];
 							}
+							unshift(@$expandedValue, $t);
+							println "13.4.4.5 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 						}
 					}
 
 					if ($expandedProperty eq '@graph') {
-						println "13.4.6" if $debug;
-						my $v	= $self->_expand($activeCtx, '@graph', $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.6
+						println "13.4.5" if $debug;
+						my $v	= $self->_expand($activeCtx, '@graph', $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.5
 						# TODO: ensure that expanded value is an array of one or more maps
 						$expandedValue	= $v;
+						println "13.4.5 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 					}
 
 					if ($expandedProperty eq '@included') {
-						println "13.4.7" if $debug;
+						println "13.4.6" if $debug;
 						if ($self->processing_mode eq 'json-ld-1.1') {
-							println "13.4.7.1" if $debug;
+							println "13.4.6.1" if $debug;
 							next;
 						}
 						
-						println "13.4.7.2" if $debug;
-						$expandedValue	= $self->_expand($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.6
+						println "13.4.6.2" if $debug;
+						$expandedValue	= $self->_expand($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered);
 						unless (ref($expandedValue) eq 'ARRAY') {
 							$expandedValue	= [$expandedValue];
 						}
 						
 						foreach my $v (@$expandedValue) {
 							unless ($self->_is_node_object($v)) {
-								println "13.4.7.3" if $debug;
+								println "13.4.6.3" if $debug;
 								die 'invalid @included value';
 							}
 						}
 						
 						if (exists $result->{'@include'}) {
-							println "13.4.7.4" if $debug;
+							println "13.4.6.4" if $debug;
 							unshift(@$expandedValue, $result->{'@include'});
 						}
+						println "13.4.6 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 					} elsif ($expandedProperty eq '@value') {
-						println "13.4.8" if $debug;
+						println "13.4.7" if $debug;
 						if ($input_type eq '@json') {
-							println "13.4.8.1" if $debug;
-							$expandedValue	= $value; # 13.4.8.1
+							println "13.4.7.1" if $debug;
+							$expandedValue	= $value; # 13.4.7.1
 							if ($self->processing_mode eq 'json-ld-1.0') {
 								die 'invalid value object value';
 							}
 						} elsif (ref($value) and defined($value)) {
-							println "13.4.8.2" if $debug; # NOTE: the language here is ambiguous: "if value is not a scalar or null"
+							println "13.4.7.2" if $debug; # NOTE: the language here is ambiguous: "if value is not a scalar or null"
 							die 'invalid value object value';
 						} else {
-							println "13.4.8.3" if $debug;
+							println "13.4.7.3" if $debug;
 							$expandedValue	= $value;
 						}
 						
 						unless (defined($expandedValue)) {
-							println "13.4.8.4" if $debug;
+							println "13.4.7.4" if $debug;
 							$result->{'@value'}	= undef;
 							next;
 						}
-						
-						if ($frameExpansion) {
-							println "13.4.8.5 TODO: frameExpansion support"; # if $debug;
-						}
+						println "13.4.7 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 					}
 
 					# NOTE: again with the "Otherwise" that seems to apply to only half the conjunction
 					if ($expandedProperty eq '@language') {
-						println "13.4.9" if $debug;
+						println "13.4.8" if $debug;
 						if (ref($value)) {
-							println "13.4.9.1" if $debug;
+							println "13.4.8.1" if $debug;
 							if ($frameExpansion) {
-								println "13.4.9.1 TODO: frameExpansion support"; # if $debug;
+								println "13.4.8.1 TODO: frameExpansion support"; # if $debug;
 							}
 							die 'invalid language-tagged string';
 						}
-						println "13.4.9.2" if $debug;
-						$expandedValue	= $value; # 13.4.9.2
+						println "13.4.8.2" if $debug;
+						$expandedValue	= $value; # 13.4.8.2
 						# TODO: validate language tag against BCP47
+						println "13.4.8 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 					}
 
 					if ($expandedProperty eq '@direction') {
-						println "13.4.10" if $debug;
+						println "13.4.9" if $debug;
 						if ($self->processing_mode eq 'json-ld-1.0') {
-							println "13.4.10.1" if $debug;
+							println "13.4.9.1" if $debug;
 							next;
 						}
 
 						if ($value ne 'ltr' and $value ne 'rtl') {
-							println "13.4.10.2" if $debug;
+							println "13.4.9.2" if $debug;
 							die 'invalid base direction';
 						}
 
-						println "13.4.10.3" if $debug;
+						println "13.4.9.3" if $debug;
 						$expandedValue	= $value;
 
 						if ($frameExpansion) {
-							println "13.4.10.4 TODO: frameExpansion support"; # if $debug;
+							println "13.4.9.4 TODO: frameExpansion support"; # if $debug;
 						}
+						println "13.4.9 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 					}
 
 					if ($expandedProperty eq '@index') {
-						println "13.4.11" if $debug;
+						println "13.4.10" if $debug;
 						if (ref($value)) {
-							println "13.4.11.1" if $debug;
+							println "13.4.10.1" if $debug;
 							die 'invalid @index value';
 						}
 						
-						println "13.4.11.2" if $debug;
+						println "13.4.10.2" if $debug;
 						$expandedValue	= $value;
+						println "13.4.10 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 					}
 
 					if ($expandedProperty eq '@list') {
-						println "13.4.12" if $debug;
+						println "13.4.11" if $debug;
 						if (not defined($activeProp) or $activeProp eq '@graph') {
-							println "13.4.12.1" if $debug;
+							println "13.4.11.1" if $debug;
 							next;
 						}
 
-						println "13.4.12.2" if $debug;
+						println "13.4.11.2" if $debug;
 						$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered);
+						println "13.4.11 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 					}
 
 					if ($expandedProperty eq '@set') {
-						println "13.4.13" if $debug;
+						println "13.4.12" if $debug;
 						$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered);
+						println "13.4.12 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 					}
 
-					# NOTE: the language here is really confusing. the first conditional in 13.4.14 is the conjunction "expanded property is @reverse and value is not a map".
-					#       however, by context it seems that really everything under 13.4.14 assumes expanded property is @reverse, and the first branch is dependent only on 'value is not a map'.
+					# NOTE: the language here is really confusing. the first conditional in 13.4.13 is the conjunction "expanded property is @reverse and value is not a map".
+					#       however, by context it seems that really everything under 13.4.13 assumes expanded property is @reverse, and the first branch is dependent only on 'value is not a map'.
 					if ($expandedProperty eq '@reverse') {
-						println "13.4.14" if $debug;
+						println "13.4.13" if $debug;
 						if (ref($value) ne 'HASH') {
-							println "13.4.14.1" if $debug;
+							println "13.4.13.1" if $debug;
 							die 'invalid @reverse value';
 						} else {
-							println "13.4.14.2" if $debug;
-							$expandedValue	= $self->_expand($activeCtx, '@reverse', $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.14.1
+							println "13.4.13.2" if $debug;
+							$expandedValue	= $self->_expand($activeCtx, '@reverse', $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.13.1
 							
 							if (ref($expandedValue) eq 'HASH' and exists $expandedValue->{'@reverse'}) { # NOTE: spec text does not assert that expandedValue is a map
-								println "13.4.14.3" if $debug;
+								println "13.4.13.3" if $debug;
 								foreach my $property (keys %{ $expandedValue->{'@reverse'} }) {
 									my $__indent	= indent();
-									println "13.4.14.3 [$property]" if $debug;
+									println "13.4.13.3 [$property]" if $debug;
 									my $item	= $expandedValue->{'@reverse'}{$property};
 									if (not exists $result->{$property}) {
-										println "13.4.14.3.1" if $debug;
+										println "13.4.13.3.1" if $debug;
 										$result->{$property}	= [];
 									}
 									
-									println "13.4.14.3.2" if $debug;
+									println "13.4.13.3.2" if $debug;
 									push(@{ $result->{$property} }, $item);
 								}
 							}
@@ -1210,49 +1245,49 @@ package JSONLD {
 							if (ref($expandedValue) eq 'HASH') { # NOTE: spec text does not assert that expandedValue is a map
 								my @keys	= grep { $_ ne '@reverse' } keys %$expandedValue;
 								if (scalar(@keys)) {
-									println "13.4.14.4" if $debug;
+									println "13.4.13.4" if $debug;
 								
 									if (not exists $result->{'@reverse'}) {
-										println "13.4.14.4.1" if $debug;
+										println "13.4.13.4.1" if $debug;
 										$result->{'@reverse'}	= {};
 									}
 								
-									println "13.4.14.4.2" if $debug;
+									println "13.4.13.4.2" if $debug;
 									my $reverse_map	= $result->{'@reverse'};
 								
-									println "13.4.14.4.3" if $debug;
+									println "13.4.13.4.3" if $debug;
 									foreach my $property (grep { $_ ne '@reverse' } keys %{ $expandedValue }) {
 										my $__indent	= indent();
-										println "13.4.14.4.3 [$property]" if $debug;
+										println "13.4.13.4.3 [$property]" if $debug;
 										my $items	= $expandedValue->{$property};
 									
-										println "13.4.14.4.3.1" if $debug;
+										println "13.4.13.4.3.1" if $debug;
 										foreach my $item (@$items) {
 											my $__indent	= indent();
 											if ($self->_is_value_object($item) or $self->_is_list_object($item)) {
-												println "13.4.14.4.3.1.1" if $debug;
+												println "13.4.13.4.3.1.1" if $debug;
 												die 'invalid reverse property value';
 											}
 										
 											if (not exists $reverse_map->{$property}) {
-												println "13.4.14.4.3.1.2" if $debug;
+												println "13.4.13.4.3.1.2" if $debug;
 												$reverse_map->{$property}	= [];
 											}
 										
-											println "13.4.14.4.3.1.3" if $debug;
+											println "13.4.13.4.3.1.3" if $debug;
 											push(@{ $reverse_map->{$property} }, $item);
 										}
 									}
 								}
 							}
 							
-							println "13.4.14.5 going to next element key" if $debug;
-							next; # 13.4.14.5
+							println "13.4.13.5 going to next element key" if $debug;
+							next; # 13.4.13.5
 						}
 					}
 
 					if ($expandedProperty eq '@nest') {
-						println "13.4.15" if $debug;
+						println "13.4.14" if $debug;
 						$nests->{$key}	//= [];
 						next;
 					}
@@ -1260,29 +1295,36 @@ package JSONLD {
 					if ($frameExpansion) {
 						my %other_framings	= map { $_ => 1 } qw(@explicit @default @embed @explicit @omitDefault @requireAll);
 						if ($other_framings{$expandedProperty}) {
-							println "13.4.16" if $debug;
-							$expandedValue	= $self->_expand($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.16
+							println "13.4.15" if $debug;
+							$expandedValue	= $self->_expand($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.15
+							println "13.4.15 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 						}
 					}
 					
 					unless (not(defined($expandedValue)) and $expandedProperty eq '@value' and $input_type eq '@json') {
-						println "13.4.17 setting " . Data::Dumper->Dump([$expandedValue], ['*expandedProperty']) if $debug;
+						println "13.4.16 setting " . Data::Dumper->Dump([$expandedValue], ['*expandedProperty']) if $debug;
 # 						println "$expandedProperty expanded value is " . Dumper($expandedValue) if $debug;
-						$result->{$expandedProperty}	= $expandedValue; # 13.4.17
+						$result->{$expandedProperty}	= $expandedValue; # 13.4.16
+						println "13.4.10 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 					}
 
-					println "13.4.18 going to next element key" if $debug;
-					next; # 13.4.18
+					println "13.4.17 going to next element key" if $debug;
+					next; # 13.4.17
 				}
 
+
 				my $tdef	= $self->_ctx_term_defn($activeCtx, $key);
-				println "13.5" if $debug;
+
+				println "13.5 initializing container mapping" if $debug;
 				my $container_mapping	= $tdef->{'container_mapping'}; # 13.5
+
 				if (exists($tdef->{'type_mapping'}) and $tdef->{'type_mapping'} eq '@json') {
 					println "13.6" if $debug;
 					$expandedValue	= { '@value' => $value, '@type' => '@json' }; # 13.6
+					println "13.6 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 				}
 			
+				println(Data::Dumper->Dump([$container_mapping], ['*container_mapping'])) if $debug;
 				if ($self->_cm_contains($container_mapping, '@language') and ref($value) eq 'HASH') {
 					println "13.7" if $debug;
 					println "13.7.1" if $debug;
@@ -1342,11 +1384,12 @@ package JSONLD {
 							push(@$expandedValue, $v);
 						}
 					}
+					println "13.7 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 # 				} elsif ((exists $container_mapping->{'@index'} or exists $container_mapping->{'@type'} or exists $container_mapping->{'@id'}) and ref($value) eq 'HASH') {
 				} elsif ($self->_cm_contains_any($container_mapping, '@index', '@type', '@id') and ref($value) eq 'HASH') {
 					println "13.8" if $debug;
 					println "13.8.1" if $debug;
-					my $expandedValue	= [];
+					$expandedValue	= [];
 					
 					println "13.8.2" if $debug;
 					my $index_key	= $tdef->{'index_mapping'} // '@index';
@@ -1355,6 +1398,7 @@ package JSONLD {
 					foreach my $index (sort keys %$value) {
 						my $__indent	= indent();
 						my $index_value	= $value->{$index};
+						println '-----------------------------------------------------------------' if $debug;
 						println "13.8.3 [$index]" if $debug;
 						my $map_context;
 						if ($self->_cm_contains_any($container_mapping, '@id', '@type')) {
@@ -1383,14 +1427,18 @@ package JSONLD {
 						
 						println "13.8.3.6" if $debug;
 						$index_value	= $self->_expand($map_context, $key, $index_value, frameExpansion => $frameExpansion, ordered => $ordered);
+						println(Data::Dumper->Dump([$index_value], ['*index_value'])) if $debug;
 						
 						println "13.8.3.7" if $debug;
 						foreach my $item (@$index_value) {
 							my $__indent	= indent();
+							println '-----------------------------------------------------------------' if $debug;
 							println "13.8.3.7 [$item]" if $debug;
 							if ($self->_cm_contains($container_mapping, '@graph')) {
+								println(Data::Dumper->Dump([$container_mapping], ['*container_mapping'])) if $debug;
 								println "13.8.3.7.1" if $debug;
 								$item	= {'@graph' => (ref($item) eq 'ARRAY') ? $item : [$item]};
+								println(Data::Dumper->Dump([$item], ['*item'])) if $debug;
 							}
 
 							if ($self->_cm_contains($container_mapping, '@index') and $index_key ne '@index' and not exists $item->{'@index'} and $expanded_index ne '@none') {
@@ -1409,6 +1457,7 @@ package JSONLD {
 							} elsif ($self->_cm_contains($container_mapping, '@index') and not exists $item->{'@index'} and $expanded_index ne '@none') {
 								println "13.8.3.7.3" if $debug;
 								$item->{'@index'}	= $index;
+								println(Data::Dumper->Dump([$item], ['*item'])) if $debug;
 							} elsif ($self->_cm_contains($container_mapping, '@id') and not exists $item->{'@id'} and $expanded_index ne '@none') {
 								println "13.8.3.7.4" if $debug;
 								$expanded_index	= $self->_5_2_2_iri_expansion($activeCtx, $index, documentRelative => 1);
@@ -1423,12 +1472,14 @@ package JSONLD {
 							}
 							
 							println "13.8.3.7.6" if $debug;
-							push(@$expandedValue, $value);
+							push(@$expandedValue, $item);
 						}
 					}
+					println "13.8 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 				} else {
 					println "13.9" if $debug;
 					$expandedValue	= $self->_5_1_2_expansion($activeCtx, $key, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.9
+					println "13.9 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 				}
 			
 # 				warn Dumper($expandedValue);
@@ -1442,6 +1493,7 @@ package JSONLD {
 					println "13.11" if $debug;
 					my @values	= (ref($expandedValue) eq 'ARRAY') ? @$expandedValue : ($expandedValue);
 					$expandedValue	= { '@list' => \@values };
+					println "13.11 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 				}
 
 # 				if (exists $container_mapping->{'@graph'}) {
@@ -1463,6 +1515,7 @@ package JSONLD {
 						}
 					}
 					$expandedValue	= \@values;
+					println "13.12 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 				}
 			
 				if ($tdef->{'reverse'}) {
@@ -1496,11 +1549,14 @@ package JSONLD {
 						println "13.13.4.3" if $debug;
 						push(@{ $reverse_map->{$expandedProperty} }, $item);
 					}
+					println "13.13 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 				} else {
 					# 13.14
 					println "13.14" if $debug;
-					println "13.14.1" if $debug;
-					$result->{$expandedProperty}	//= []; # 13.14.1
+					unless (exists $result->{$expandedProperty}) {
+						println "13.14.1" if $debug;
+						$result->{$expandedProperty}	= []; # 13.14.1
+					}
 
 					println "13.14.2" if $debug;
 					if (ref($expandedValue) eq 'ARRAY') {
@@ -1508,8 +1564,10 @@ package JSONLD {
 					} elsif (ref($expandedValue)) {
 						# NOTE: I'm assuming that this is the intention of 13.14.2,
 						# but it isn't actually spelled out in the spec text.
+						println "setting result[$expandedProperty]" if $debug;
 						push(@{$result->{$expandedProperty}}, $expandedValue); # 13.14.2
 					}
+					println "13.14 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 				}
 			
 				foreach my $nesting_key (keys %$nests) {
@@ -1530,6 +1588,7 @@ package JSONLD {
 						push(@elements, $nested_value); # 13.15.2.2
 					}
 				}
+				println "after 13.15 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 			}
 		}
 
@@ -1572,9 +1631,11 @@ package JSONLD {
 # 					}
 # 				}
 			}
+			println "14 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 		} elsif (exists $result->{'@type'} and ref($result->{'@type'}) ne 'ARRAY') {
 			println "15" if $debug;
 			$result->{'@type'}	= [$result->{'@type'}]; # 15
+			println "15 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 		} elsif (exists $result->{'@set'} or exists $result->{'@list'}) {
 			# 16
 			println "16" if $debug;
@@ -1587,8 +1648,10 @@ package JSONLD {
 				println "16.2" if $debug;
 				$result	= $result->{'@set'}; # 16.2
 			}
+			println "16 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 		}
 		
+		println "after 16 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 		if (ref($result) eq 'HASH') { # NOTE: assuming based on the effects of 16.2 that this condition is necessary to guard against cases where $result is not a hashref.
 			my @keys	= keys %$result;
 			if (scalar(@keys) == 1 and $keys[0] eq '@language') {
@@ -1610,6 +1673,7 @@ package JSONLD {
 					}
 				}
 			}
+			println "17 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 		}
 		
 		local($Data::Dumper::Indent)	= 1;

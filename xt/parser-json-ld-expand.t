@@ -19,7 +19,7 @@ our $debug	= 0;
 $JSONLD::debug	= $debug;
 our $PATTERN;
 if ($debug) {
-	$PATTERN = qr/t0032/;
+	$PATTERN = qr/t0099/;
 } else {
 	$PATTERN	= /./;
 }
@@ -48,6 +48,7 @@ foreach my $t (@$tests) {
 	my $purpose	= $t->{'purpose'};
 	my $options	= $t->{'option'} // {};
 	my $_base	= $options->{'base'};
+	my $spec_v	= $options->{'specVersion'} // '';
 	my @types	= @{ $t->{'@type'} };
 	my %types	= map { $_ => 1 } @types;
 
@@ -59,7 +60,9 @@ foreach my $t (@$tests) {
 	}
 	my $j		= JSON->new->canonical(1)->allow_nonref(1);
 	$j->boolean_values(0, 1);
-	if ($types{'jld:PositiveEvaluationTest'}) {
+	if ($spec_v eq 'json-ld-1.0') {
+		diag("IGNORING JSON-LD-1.0-only test $id\n");
+	} elsif ($types{'jld:PositiveEvaluationTest'}) {
 		note($id);
 		my $jld			= JSONLD->new(base_iri => IRI->new($test_base));
 		my $infile		= File::Spec->catfile($path, $input);
