@@ -33,8 +33,11 @@ package JSONLD {
 	sub expand {
 		my $self	= shift;
 		my $d		= shift;
+		my $ctx		= {
+			'@base' => $self->base_iri->abs, # TODO: not sure this follows the spec, but it's what makes test t0089 pass
+		};
 # 		warn "Expanding...";
-		return $self->_expand(undef, undef, $d);
+		return $self->_expand($ctx, undef, $d);
 	}
 	
 	sub _is_string {
@@ -72,9 +75,15 @@ package JSONLD {
 	sub _is_abs_iri {
 		my $self	= shift;
 		my $value	= shift;
+		return 0 unless (length($value));
 		my $i		= eval { IRI->new($value) };
-		return 0 unless ($i);
-		return ($value eq $i->abs);
+		unless ($i) {
+			println("is_abs_iri: 0");
+			return 0;
+		}
+		my $is_abs = ($value eq $i->abs);
+		println("is_abs_iri: $is_abs");
+		return $is_abs;
 	}
 	
 	sub _is_iri {
@@ -105,7 +114,9 @@ package JSONLD {
 		my $value	= shift;
 		if (ref($container_mapping)) {
 			Carp::cluck unless (ref($container_mapping) eq 'ARRAY');
-			return any { $_ eq $value } @$container_mapping;
+			foreach my $m (@$container_mapping) {
+				return 1 if ($m eq $value);
+			}
 		} else {
 			return (defined($container_mapping) and $container_mapping eq $value);
 		}
@@ -114,7 +125,7 @@ package JSONLD {
 	sub _cm_contains_any {
 		my $self	= shift;
 		my $container_mapping	= shift;
-		my @values	= shift;
+		my @values	= @_;
 		foreach my $value (@values) {
 			return 1 if ($self->_cm_contains($container_mapping, $value));
 		}
@@ -307,12 +318,13 @@ package JSONLD {
 				println "5.7" if $debug;
 				println "5.7.1" if $debug;
 				my $value	= $context->{'@base'};
+				println(Data::Dumper->Dump([$result], ['result'])) if $debug;
 				
 				if (not defined($value)) {
 					println "5.7.2" if $debug;
 					delete $result->{'@base'};
 				} elsif ($self->_is_abs_iri($value)) {
-					println "5.7.3" if $debug;
+					println "5.7.3 \@base = " . Dumper($value) if $debug;
 					$result->{'@base'}	= $value;
 				} elsif ($self->_is_iri($value) and defined($result->{'@base'})) {
 					println "5.7.4" if $debug;
@@ -614,9 +626,12 @@ package JSONLD {
 				}
 				if ($term =~ /.:./ or index($term, '/') >= 0) {
 					println "16.5" if $debug;
-					$defined->{$term}	= 1; # https://github.com/w3c/json-ld-api/issues/245
+					println "16.5.1" if $debug;
+					$defined->{$term}	= 1;
+
 					my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $term, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
 					if ($iri ne $definition->{'iri_mapping'}) {
+						println "16.5.2" if $debug;
 						die 'invalid IRI mapping'; # 16.5 ; NOTE: the text here doesn't discuss what parameters to pass to IRI expansion
 					}
 				}
@@ -676,7 +691,7 @@ package JSONLD {
 					}
 				} elsif (any { $_ =~ /^[@](id|index)$/ } @$container) { # any { $_ eq '@graph' } @$container
 					
-				} elsif (any { $_ eq '@set' } @$container and any { $_ =~ /^[@](id|index|type|language|graph)$/ } @$container) { # https://github.com/w3c/json-ld-api/issues/242
+				} elsif (any { $_ eq '@set' } @$container and any { $_ =~ /^[@](index|graph|id|type|language)$/ } @$container) { # https://github.com/w3c/json-ld-api/issues/242
 					
 				} else {
 					warn Dumper($container);
@@ -1017,6 +1032,7 @@ package JSONLD {
 				
 				println "13.2" if $debug;
 				my $expandedProperty	= $self->_5_2_2_iri_expansion($activeCtx, $key, vocab => 1); # 13.2
+				println "13.2 " . Data::Dumper->Dump([$expandedProperty], ['expandedProperty']) if $debug;
 				println(Data::Dumper->Dump([$expandedProperty], ['expandedProperty'])) if $debug;
 				if (not(defined($expandedProperty)) or ($expandedProperty !~ /:/ and not exists $keywords{$expandedProperty})) {
 					println "13.3 going to next element key" if $debug;
@@ -1324,7 +1340,8 @@ package JSONLD {
 					println "13.6 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 				}
 			
-				println(Data::Dumper->Dump([$container_mapping], ['*container_mapping'])) if $debug;
+				println(Data::Dumper->Dump([$container_mapping, $value], ['*container_mapping', '*value'])) if $debug;
+				warn $self->_cm_contains_any($container_mapping, '@index', '@type', '@id');
 				if ($self->_cm_contains($container_mapping, '@language') and ref($value) eq 'HASH') {
 					println "13.7" if $debug;
 					println "13.7.1" if $debug;
