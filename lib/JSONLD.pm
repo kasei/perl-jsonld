@@ -1118,7 +1118,7 @@ package JSONLD {
 
 					if ($expandedProperty eq '@included') {
 						println "13.4.6" if $debug;
-						if ($self->processing_mode eq 'json-ld-1.1') {
+						if ($self->processing_mode eq 'json-ld-1.0') {
 							println "13.4.6.1" if $debug;
 							next;
 						}
