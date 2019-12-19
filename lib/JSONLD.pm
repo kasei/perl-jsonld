@@ -529,12 +529,13 @@ package JSONLD {
 			$type	= $self->_5_2_2_iri_expansion($activeCtx, $type, vocab => 1, localCtx => $localCtx, 'defined' => $defined); # 13.2
 			println(Data::Dumper->Dump([$type], ['type'])) if $debug;
 
-			if (($type eq '@json' or $type eq '@none') and $self->processing_mode eq 'json-ld-1.0') {
+			if (($type eq '@json' or $type eq '@none')) {
+				# https://github.com/w3c/json-ld-api/issues/259
 				println "13.3 " . Data::Dumper->Dump([$type], ['*type']) if $debug;
-				die 'invalid type mapping';
-			}
-
-			if ($type ne '@id' and $type ne '@vocab' and $type ne '@json' and not($self->_is_abs_iri($type))) {
+				if ($self->processing_mode eq 'json-ld-1.0') {
+					die 'invalid type mapping';
+				}
+			} elsif ($type ne '@id' and $type ne '@vocab' and $type ne '@json' and not($self->_is_abs_iri($type))) {
 				# TODO: handle case "nor, if processing mode is json-ld-1.1, @json nor @none"
 				println "13.4 " . Data::Dumper->Dump([$type], ['*type']) if $debug;
 				die 'invalid type mapping'; # 13.4
