@@ -382,7 +382,7 @@ package JSONLD {
 					println "5.10.3" if $debug;
 					delete $result->{'@direction'}
 				} elsif (not ref($value)) {
-					println "5.10.4" if $debug;
+					println "5.10.4 \@direction = $value" if $debug;
 					if ($value ne 'ltr' and $value ne 'rtl') {
 						die 'invalid base direction';
 					}
@@ -1346,7 +1346,7 @@ package JSONLD {
 					$expandedValue	= [];
 					
 					println "13.7.2" if $debug;
-					my $direction	= $activeCtx->{'default_base_direction'};
+					my $direction	= $activeCtx->{'@direction'};
 					
 					if (exists $tdef->{'direction_mapping'}) {
 						println "13.7.3" if $debug;
@@ -1830,7 +1830,7 @@ package JSONLD {
 			my $language	= (exists $tdef->{'language_mapping'}) ? $tdef->{'language_mapping'} : $activeCtx->{'@language'}; # 5.1
 
 			println "5.2" if $debug;
-			my $direction	= $tdef->{'direction_mapping'} // $activeCtx->{'default_base_direction'}; # 5.2
+			my $direction	= $tdef->{'direction_mapping'} // $activeCtx->{'@direction'}; # 5.2
 			
 			if (defined($language)) {
 				println "5.3" if $debug;
