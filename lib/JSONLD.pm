@@ -829,9 +829,10 @@ package JSONLD {
 			}
 		}
 
-		my @keys	= grep { not m/^[@](id|reverse|container|context|language|nest|prefix|type)$/ } keys %$value;
+		# https://github.com/w3c/json-ld-api/issues/261
+		my @keys	= grep { not m/^[@](id|reverse|container|context|language|nest|prefix|type|direction)$/ } keys %$value;
 		if (scalar(@keys)) {
-			println "28" if $debug;
+			println "28 " . Data::Dumper->Dump([\@keys, $value], ['invalid_keys', 'value']) if $debug;
 			die 'invalid term definition'; # 28
 		}
 		
