@@ -475,7 +475,7 @@ package JSONLD {
 			if (exists $keywords{$term}) {
 				die 'keyword redefinition';
 			}
-			if (substr($term, 0, 1) eq '@') {
+			if ($term =~ /^@[A-Za-z]+$/) {
 				# https://www.w3.org/2018/json-ld-wg/Meetings/Minutes/2019/2019-09-20-json-ld#section5-2
 				warn "create term definition attempted on a term that looks like a keyword: $term\n";
 				println "5 returning so as to ignore a term that has the form of a keyword: $term" if $debug;
@@ -556,7 +556,7 @@ package JSONLD {
 				println "14.2" if $debug;
 				die 'invalid IRI mapping'; # 14.2
 			}
-			if (substr($reverse, 0, 1) eq '@') {
+			if ($reverse =~ /^@[A-Za-z]+$/) {
 				println "14.3" if $debug;
 				die '@reverse value looks like a keyword: ' . $reverse; # 14.3
 			} else {
@@ -608,7 +608,7 @@ package JSONLD {
 					die 'invalid IRI mapping'; # 16.2
 				}
 			
-				if (defined($id) and not exists $keywords{$id} and substr($id, 0, 1) eq '@') {
+				if (defined($id) and not exists $keywords{$id} and $id =~ /^@[A-Za-z]+$/) {
 					println "16.3" if $debug;
 					warn "create term definition encountered an \@id that looks like a keyword: $id\n"; # 16.3
 					return;
@@ -1721,7 +1721,7 @@ package JSONLD {
 			return $value;
 		}
 		
-		if (substr($value, 0, 1) eq '@') {
+		if ($value =~ /^@[A-Za-z]+$/) {
 			println "2" if $debug;
 			warn "IRI expansion attempted on a term that looks like a keyword: $value\n"; # 2
 		}
