@@ -528,6 +528,7 @@ package JSONLD {
 			
 			println "13.2" if $debug;
 			$type	= $self->_5_2_2_iri_expansion($activeCtx, $type, vocab => 1, localCtx => $localCtx, 'defined' => $defined); # 13.2
+			println(Data::Dumper->Dump([$type], ['type'])) if $debug;
 
 			if (($type eq '@json' or $type eq '@none') and $self->processing_mode eq 'json-ld-1.0') {
 				println "13.3" if $debug;
@@ -1333,16 +1334,13 @@ package JSONLD {
 
 				println "13.5 initializing container mapping" if $debug;
 				my $container_mapping	= $tdef->{'container_mapping'}; # 13.5
+				println(Data::Dumper->Dump([$container_mapping, $value], ['*container_mapping', '*value'])) if $debug;
 
 				if (exists($tdef->{'type_mapping'}) and $tdef->{'type_mapping'} eq '@json') {
 					println "13.6" if $debug;
 					$expandedValue	= { '@value' => $value, '@type' => '@json' }; # 13.6
 					println "13.6 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-				}
-			
-				println(Data::Dumper->Dump([$container_mapping, $value], ['*container_mapping', '*value'])) if $debug;
-				warn $self->_cm_contains_any($container_mapping, '@index', '@type', '@id');
-				if ($self->_cm_contains($container_mapping, '@language') and ref($value) eq 'HASH') {
+				} elsif ($self->_cm_contains($container_mapping, '@language') and ref($value) eq 'HASH') {
 					println "13.7" if $debug;
 					println "13.7.1" if $debug;
 					$expandedValue	= [];
