@@ -81,8 +81,7 @@ package JSONLD {
 			println("is_abs_iri: 0");
 			return 0;
 		}
-		my $is_abs = ($value eq $i->abs);
-		println("is_abs_iri: $is_abs");
+		my $is_abs = ($i->has_scheme and $value eq $i->abs);
 		return $is_abs;
 	}
 	
@@ -531,13 +530,13 @@ package JSONLD {
 			println(Data::Dumper->Dump([$type], ['type'])) if $debug;
 
 			if (($type eq '@json' or $type eq '@none') and $self->processing_mode eq 'json-ld-1.0') {
-				println "13.3" if $debug;
+				println "13.3 " . Data::Dumper->Dump([$type], ['*type']) if $debug;
 				die 'invalid type mapping';
 			}
 
-			if ($type ne '@id' and $type ne '@vocab' and not($self->_is_abs_iri($type))) {
+			if ($type ne '@id' and $type ne '@vocab' and $type ne '@json' and not($self->_is_abs_iri($type))) {
 				# TODO: handle case "nor, if processing mode is json-ld-1.1, @json nor @none"
-				println "13.4" if $debug;
+				println "13.4 " . Data::Dumper->Dump([$type], ['*type']) if $debug;
 				die 'invalid type mapping'; # 13.4
 			}
 			
