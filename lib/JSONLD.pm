@@ -323,12 +323,13 @@ package JSONLD {
 				}
 				
 				my $content	= $resp->decoded_content;
-				my $j		= eval { decode_json(encode('UTF-8', $content)) };
+				my $j		= eval { decode_json(encode('UTF-8', $content))->{'@context'} };
 				if ($@) {
+					println "5.6.5 $@" if $debug;
 					die 'loading remote context failed';
 				}
 				
-				unless (ref($j) eq 'HASH' and exists $j->{'@context'} and ref($j->{'@context'}) eq 'HASH') {
+				unless (ref($j) eq 'HASH') {
 					println "5.6.6" if $debug;
 					die 'invalid remote context';
 				}
@@ -505,6 +506,7 @@ package JSONLD {
 			# 5
 			println "5" if $debug;
 			if (exists $keywords{$term}) {
+				println "5 keyword redefinition: $term" if $debug;
 				die 'keyword redefinition';
 			}
 			if ($term =~ /^@[A-Za-z]+$/) {
