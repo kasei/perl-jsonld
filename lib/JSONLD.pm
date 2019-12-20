@@ -8,14 +8,14 @@ use FindBin qw($Bin);
 use File::Glob qw(bsd_glob);
 use LWP;
 use File::Spec;
-use Encode qw(encode);
-use JSON qw(decode_json);
 use Data::Dumper;
 
 package JSONLD {
 	use Moo;
 	use IRI;
 	use JSON;
+	use Encode qw(encode);
+	use JSON qw(decode_json);
 	use B qw(svref_2object SVf_IOK SVf_POK);
 	use List::Util qw(all any);
 	use Debug::ShowStuff qw(indent println);
@@ -26,7 +26,9 @@ package JSONLD {
 	
 	has 'base_iri' => (is => 'rw', required => 0, default => sub { IRI->new('http://example.org/') });
 	has 'processing_mode' => (is => 'ro', default => 'json-ld-1.1');
-
+	has 'max_remote_contexts' => (is => 'rw', default => 10);
+	has 'parsed_remote_contexts' => (is => 'rw', default => sub { +{} });
+	
 	our $debug		= 0;
 	my %keywords	= map { $_ => 1 } qw(: @base @container @context @direction @graph @id @import @included @index @json @language @list @nest @none @prefix @propagate @protected @reverse @set @type @value @version @vocab);
 	
@@ -194,7 +196,9 @@ package JSONLD {
 		my $propagate	= $args{propagate} // 1;
 		my $remote_contexts	= $args{remote_contexts} // [];
 		my $override_protected	= $args{override_protected} // 0;
-		
+		my $base_iri	= $args{base_iri} // $self->base_iri->abs;
+		println "BASE IRI for LOCAL CONTEXT: $base_iri";
+
 		println "1" if $debug;
 		my $result	= clone($activeCtx); # 1
 		confess "Bad active context type in _4_1_2_ctx_processing: " . Dumper($activeCtx) unless (ref($activeCtx) eq 'HASH');
@@ -216,7 +220,9 @@ package JSONLD {
 		println "5" if $debug;
 		foreach my $context (@$localCtx) {
 			my $__indent	= indent();
-			println "5 loop iteration" if $debug;
+			println '-----------------------------------------------------------------' if $debug;
+			println "5 loop for each local context item" if $debug;
+			println(Data::Dumper->Dump([$context], ['*context'])) if $debug;
 			if (not(defined($context))) {
 				# 5.1
 				println "5.1" if $debug;
@@ -235,14 +241,38 @@ package JSONLD {
 			}
 
 			if (not(ref($context))) {
-				println "5.2" if $debug;
+				println "5.2 $context" if $debug;
 				
-				println "5.2.1 TODO"; # if $debug;
-				println "5.2.2 TODO"; # if $debug;
-				println "5.2.3 TODO"; # if $debug;
-				println "5.2.4 TODO"; # if $debug;
-				println "5.2.5 TODO"; # if $debug;
-				println "5.2.6 TODO"; # if $debug;
+				println "5.2.1" if $debug;
+				$context	= IRI->new(value => $context, base => $base_iri)->abs;
+				
+				if (scalar(@$remote_contexts) > $self->max_remote_contexts) {
+					println "5.2.2" if $debug;
+					die 'context overflow';
+				}
+				
+				my $context_url		= $context;
+				if (my $c = $self->parsed_remote_contexts->{$context}) {
+					println "5.2.3" if $debug;
+					$context	= $c;
+				} else {
+					println "5.2.4 loading context from: $context_url" if $debug;
+					my $resp	= $self->_load_document($context_url, 'http://www.w3.org/ns/json-ld#context', 'http://www.w3.org/ns/json-ld#context');
+					if (not $resp->is_success) {
+						println "5.2.5 " . $resp->status_line if $debug;
+						die 'loading remote context failed';
+					}
+					my $content	= $resp->decoded_content;
+					$context		= eval { decode_json(encode('UTF-8', $content))->{'@context'} };
+					if ($@) {
+						println "5.2.5 $@" if $debug;
+						die 'loading remote context failed';
+					}
+					$self->parsed_remote_contexts->{$context_url}	= $context;
+				}
+
+				println "5.2.6" if $debug;
+				$result	= $self->_4_1_2_ctx_processing($result, $context, remote_contexts => clone($remote_contexts), base_iri => $context_url);
 
 				println "5.2.7 moving to next context" if $debug;
 				next;
@@ -323,7 +353,7 @@ package JSONLD {
 					println "5.7.2" if $debug;
 					delete $result->{'@base'};
 				} elsif ($self->_is_abs_iri($value)) {
-					println "5.7.3 \@base = " . Dumper($value) if $debug;
+					println "5.7.3 " . Data::Dumper->Dump([$value], ['base']) if $debug;
 					$result->{'@base'}	= $value;
 				} elsif ($self->_is_iri($value) and defined($result->{'@base'})) {
 					println "5.7.4" if $debug;
@@ -415,7 +445,7 @@ package JSONLD {
 				my $__indent	= indent();
 				println "5.13 [$key]" if $debug;
 				my $value	= $context->{$key};
-				$self->_4_2_2_create_term_definition($result, $context, $key, $defined, protected => $context->{'@protected'}, propagate => $propagate); # 5.13
+				$self->_4_2_2_create_term_definition($result, $context, $key, $defined, protected => $context->{'@protected'}, propagate => $propagate, base_iri => $base_iri); # 5.13
 			}
 		}
 
@@ -440,6 +470,8 @@ package JSONLD {
 		my $protected	= $args{protected} // 0;
 		my $override_protected	= $args{override_protected} // 0;
 		my $propagate	= $args{propagate} // 1;
+		my $base_iri	= $args{base_iri} // $self->base_iri->abs;
+# 		println "BASE IRI for LOCAL CONTEXT: $base_iri";
 		
 		# 4.2.2
 		if (exists ($defined->{$term})) {
@@ -505,7 +537,7 @@ package JSONLD {
 		}
 		
 		println "10" if $debug;
-		my $definition	= {};	# 10
+		my $definition	= {'__source_base_iri' => $base_iri};	# 10
 		
 		if ($value->{'@protected'}) {
 			println "11" if $debug;
@@ -763,7 +795,8 @@ package JSONLD {
 			my $context	= $value->{'@context'};
 
 			println "23.3" if $debug;
-			$self->_4_1_2_ctx_processing($activeCtx, $context, override_protected => 1); # discard result
+			$self->_4_1_2_ctx_processing($activeCtx, $context, override_protected => 1, base_iri => $base_iri); # discard result
+# 			$self->_4_1_2_ctx_processing($activeCtx, $context, override_protected => 1); # discard result
 			
 			$definition->{'@context'}	= $context;	# Note: not sure about the spec text wording here: "Set the local context of definition to context." What is the "local context" of a definition?
 		}
@@ -830,7 +863,7 @@ package JSONLD {
 		}
 
 		# https://github.com/w3c/json-ld-api/issues/261
-		my @keys	= grep { not m/^[@](id|reverse|container|context|language|nest|prefix|type|direction)$/ } keys %$value;
+		my @keys	= grep { not m/^[@](id|reverse|container|context|language|nest|prefix|type|direction|protected|index)$/ } keys %$value;
 		if (scalar(@keys)) {
 			println "28 " . Data::Dumper->Dump([\@keys, $value], ['invalid_keys', 'value']) if $debug;
 			die 'invalid term definition'; # 28
@@ -857,7 +890,7 @@ package JSONLD {
 		println "returning from _4_2_2_create_term_definition: " . Dumper($activeCtx->{'terms'}{$term}) if $debug;
 		return;
 	}
-	
+
 	sub _5_1_2_expansion {
 		my $self		= shift;
 		my $activeCtx	= shift;
@@ -961,7 +994,12 @@ package JSONLD {
 		
 		if (defined($property_scoped_ctx)) {
 			println "8" if $debug;
-			$activeCtx = $self->_4_1_2_ctx_processing($activeCtx, $property_scoped_ctx); # 8
+			println(Dumper($property_scoped_ctx));
+			my %args;
+			if ($tdef and exists $tdef->{'__source_base_iri'}) {
+				$args{base_iri}	= $tdef->{'__source_base_iri'};
+			}
+			$activeCtx = $self->_4_1_2_ctx_processing($activeCtx, $property_scoped_ctx, %args); # 8
 		}
 		
 		if (exists $element->{'@context'}) {
@@ -1016,597 +1054,42 @@ package JSONLD {
 			}
 		}
 		
-		my @elements	= ($element);
-		while (my $element = shift(@elements)) {
-			println "13 --- processing element" if ($debug);
-			foreach my $key (sort keys %$element) {
+		$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
+
+############### XXX
+			println "13.15-prime" if $debug;
+			foreach my $nesting_key (keys %$nests) {
+				# 13.15
 				my $__indent	= indent();
-				my $value	= $element->{$key};
-				# 13
-				println '-----------------------------------------------------------------' if $debug;
-				println "13 [$key] " . Data::Dumper->Dump([$value], ['value']) if $debug;
-				if ($key eq '@context') {
-					println "13.1 going to next element key" if $debug;
-					next; # 13.1
-				}
-				local($Data::Dumper::Indent)	= 1;
-				println(Data::Dumper->Dump([$activeCtx], ['activeCtx'])) if $debug;
-				
-				println "13.2" if $debug;
-				my $expandedProperty	= $self->_5_2_2_iri_expansion($activeCtx, $key, vocab => 1); # 13.2
-				println "13.2 " . Data::Dumper->Dump([$expandedProperty], ['expandedProperty']) if $debug;
-				println(Data::Dumper->Dump([$expandedProperty], ['expandedProperty'])) if $debug;
-				if (not(defined($expandedProperty)) or ($expandedProperty !~ /:/ and not exists $keywords{$expandedProperty})) {
-					println "13.3 going to next element key" if $debug;
-					next; # 13.3
-				}
-			
-				my $expandedValue;
-				if (exists $keywords{$expandedProperty}) {
-					# 13.4
-					println "13.4 keyword: $expandedProperty" if $debug;
-					
-					if (defined($activeProp) and $activeProp eq '@reverse') {
-						println "13.4.1" if $debug;
-						die 'invalid reverse property map'; # 13.4.1
-					}
-
-					if (exists $result->{$expandedProperty}) {
-						my $p	= $result->{$expandedProperty};
-						if ($p ne '@included' and $p ne '@type') {
-							println "13.4.2" if $debug;
-							die 'colliding keywords'; # 13.4.2
-						}
-					}
-					
-					# NOTE: another case of an "Otherwise" applying to a partial conjunction
-					if ($expandedProperty eq '@id') {
-						if (ref($value)) {
-							println "13.4.3 invalid" if $debug;
-							die 'invalid @id value';
-						} else {
-							println "13.4.3" if $debug;
-							$expandedValue	= $self->_5_2_2_iri_expansion($activeCtx, $value, documentRelative => 1);
-							println "13.4.3 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-						}
-					}
-
-					if ($expandedProperty eq '@type') {
-						println "13.4.4" if $debug;
-						my $is_string = not(ref($value));
-						my $is_array	= ref($value) eq 'ARRAY';
-						my $is_array_of_strings	= ($is_array and all { not(ref($_)) } @$value);
-						if (not($is_string) and not($is_array_of_strings)) {
-							println "13.4.4.1 invalid" if $debug;
-							die 'invalid type value';
-						}
-						
-						if (ref($value) eq 'HASH' and scalar(%$value) == 0) {
-							println "13.4.4.2" if $debug;
-							$expandedValue	= $value;
-							println "13.4.4.2 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-						} elsif ($self->_is_default_object($value)) {
-							println "13.4.4.3" if $debug;
-							$expandedValue	= { '@default' => $self->_5_2_2_iri_expansion($type_scoped_ctx, $value, vocab => 1, documentRelative => 1) };
-							println "13.4.4.3 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-						} else {
-							println "13.4.4.4" if $debug;
-							if (ref($value)) {
-								$expandedValue	= [map {$self->_5_2_2_iri_expansion($type_scoped_ctx, $_, vocab => 1, documentRelative => 1)} @$value];
-							} else {
-								$expandedValue	= $self->_5_2_2_iri_expansion($type_scoped_ctx, $value, vocab => 1, documentRelative => 1);
-							}
-							println "13.4.4.4 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-						}
-						
-						if (my $t = $result->{'@type'}) {
-							println "13.4.4.5" if $debug;
-							if (ref($expandedValue) ne 'ARRAY') {
-								$expandedValue	= [$expandedValue];
-							}
-							unshift(@$expandedValue, $t);
-							println "13.4.4.5 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-						}
-					}
-
-					if ($expandedProperty eq '@graph') {
-						println "13.4.5" if $debug;
-						my $v	= $self->_expand($activeCtx, '@graph', $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.5
-						# TODO: ensure that expanded value is an array of one or more maps
-						$expandedValue	= $v;
-						println "13.4.5 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-					}
-
-					if ($expandedProperty eq '@included') {
-						println "13.4.6" if $debug;
-						if ($self->processing_mode eq 'json-ld-1.0') {
-							println "13.4.6.1" if $debug;
-							next;
-						}
-						
-						println "13.4.6.2" if $debug;
-						$expandedValue	= $self->_expand($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered);
-						unless (ref($expandedValue) eq 'ARRAY') {
-							$expandedValue	= [$expandedValue];
-						}
-						
-						foreach my $v (@$expandedValue) {
-							unless ($self->_is_node_object($v)) {
-								println "13.4.6.3" if $debug;
-								die 'invalid @included value';
-							}
-						}
-						
-						if (exists $result->{'@include'}) {
-							println "13.4.6.4" if $debug;
-							unshift(@$expandedValue, $result->{'@include'});
-						}
-						println "13.4.6 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-					} elsif ($expandedProperty eq '@value') {
-						println "13.4.7" if $debug;
-						if ($input_type eq '@json') {
-							println "13.4.7.1" if $debug;
-							$expandedValue	= $value; # 13.4.7.1
-							if ($self->processing_mode eq 'json-ld-1.0') {
-								die 'invalid value object value';
-							}
-						} elsif (ref($value) and defined($value)) {
-							println "13.4.7.2" if $debug; # NOTE: the language here is ambiguous: "if value is not a scalar or null"
-							die 'invalid value object value';
-						} else {
-							println "13.4.7.3" if $debug;
-							$expandedValue	= $value;
-						}
-						
-						unless (defined($expandedValue)) {
-							println "13.4.7.4" if $debug;
-							$result->{'@value'}	= undef;
-							next;
-						}
-						println "13.4.7 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-					}
-
-					# NOTE: again with the "Otherwise" that seems to apply to only half the conjunction
-					if ($expandedProperty eq '@language') {
-						println "13.4.8" if $debug;
-						if (ref($value)) {
-							println "13.4.8.1" if $debug;
-							if ($frameExpansion) {
-								println "13.4.8.1 TODO: frameExpansion support"; # if $debug;
-							}
-							die 'invalid language-tagged string';
-						}
-						println "13.4.8.2" if $debug;
-						$expandedValue	= $value; # 13.4.8.2
-						# TODO: validate language tag against BCP47
-						println "13.4.8 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-					}
-
-					if ($expandedProperty eq '@direction') {
-						println "13.4.9" if $debug;
-						if ($self->processing_mode eq 'json-ld-1.0') {
-							println "13.4.9.1" if $debug;
-							next;
-						}
-
-						if ($value ne 'ltr' and $value ne 'rtl') {
-							println "13.4.9.2" if $debug;
-							die 'invalid base direction';
-						}
-
-						println "13.4.9.3" if $debug;
-						$expandedValue	= $value;
-
-						if ($frameExpansion) {
-							println "13.4.9.4 TODO: frameExpansion support"; # if $debug;
-						}
-						println "13.4.9 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-					}
-
-					if ($expandedProperty eq '@index') {
-						println "13.4.10" if $debug;
-						if (ref($value)) {
-							println "13.4.10.1" if $debug;
-							die 'invalid @index value';
-						}
-						
-						println "13.4.10.2" if $debug;
-						$expandedValue	= $value;
-						println "13.4.10 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-					}
-
-					if ($expandedProperty eq '@list') {
-						println "13.4.11" if $debug;
-						if (not defined($activeProp) or $activeProp eq '@graph') {
-							println "13.4.11.1" if $debug;
-							next;
-						}
-
-						println "13.4.11.2" if $debug;
-						$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered);
-						println "13.4.11 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-					}
-
-					if ($expandedProperty eq '@set') {
-						println "13.4.12" if $debug;
-						$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered);
-						println "13.4.12 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-					}
-
-					# NOTE: the language here is really confusing. the first conditional in 13.4.13 is the conjunction "expanded property is @reverse and value is not a map".
-					#       however, by context it seems that really everything under 13.4.13 assumes expanded property is @reverse, and the first branch is dependent only on 'value is not a map'.
-					if ($expandedProperty eq '@reverse') {
-						println "13.4.13" if $debug;
-						if (ref($value) ne 'HASH') {
-							println "13.4.13.1" if $debug;
-							die 'invalid @reverse value';
-						} else {
-							println "13.4.13.2" if $debug;
-							$expandedValue	= $self->_expand($activeCtx, '@reverse', $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.13.1
-							
-							if (ref($expandedValue) eq 'HASH' and exists $expandedValue->{'@reverse'}) { # NOTE: spec text does not assert that expandedValue is a map
-								println "13.4.13.3" if $debug;
-								foreach my $property (keys %{ $expandedValue->{'@reverse'} }) {
-									my $__indent	= indent();
-									println "13.4.13.3 [$property]" if $debug;
-									my $item	= $expandedValue->{'@reverse'}{$property};
-									if (not exists $result->{$property}) {
-										println "13.4.13.3.1" if $debug;
-										$result->{$property}	= [];
-									}
-									
-									println "13.4.13.3.2" if $debug;
-									push(@{ $result->{$property} }, $item);
-								}
-							}
-							
-							if (ref($expandedValue) eq 'HASH') { # NOTE: spec text does not assert that expandedValue is a map
-								my @keys	= grep { $_ ne '@reverse' } keys %$expandedValue;
-								if (scalar(@keys)) {
-									println "13.4.13.4" if $debug;
-								
-									if (not exists $result->{'@reverse'}) {
-										println "13.4.13.4.1" if $debug;
-										$result->{'@reverse'}	= {};
-									}
-								
-									println "13.4.13.4.2" if $debug;
-									my $reverse_map	= $result->{'@reverse'};
-								
-									println "13.4.13.4.3" if $debug;
-									foreach my $property (grep { $_ ne '@reverse' } keys %{ $expandedValue }) {
-										my $__indent	= indent();
-										println "13.4.13.4.3 [$property]" if $debug;
-										my $items	= $expandedValue->{$property};
-									
-										println "13.4.13.4.3.1" if $debug;
-										foreach my $item (@$items) {
-											my $__indent	= indent();
-											if ($self->_is_value_object($item) or $self->_is_list_object($item)) {
-												println "13.4.13.4.3.1.1" if $debug;
-												die 'invalid reverse property value';
-											}
-										
-											if (not exists $reverse_map->{$property}) {
-												println "13.4.13.4.3.1.2" if $debug;
-												$reverse_map->{$property}	= [];
-											}
-										
-											println "13.4.13.4.3.1.3" if $debug;
-											push(@{ $reverse_map->{$property} }, $item);
-										}
-									}
-								}
-							}
-							
-							println "13.4.13.5 going to next element key" if $debug;
-							next; # 13.4.13.5
-						}
-					}
-
-					if ($expandedProperty eq '@nest') {
-						println "13.4.14" if $debug;
-						$nests->{$key}	//= [];
-						next;
-					}
-
-					if ($frameExpansion) {
-						my %other_framings	= map { $_ => 1 } qw(@explicit @default @embed @explicit @omitDefault @requireAll);
-						if ($other_framings{$expandedProperty}) {
-							println "13.4.15" if $debug;
-							$expandedValue	= $self->_expand($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.15
-							println "13.4.15 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-						}
-					}
-					
-					unless (not(defined($expandedValue)) and $expandedProperty eq '@value' and $input_type eq '@json') {
-						println "13.4.16 setting " . Data::Dumper->Dump([$expandedValue], ['*expandedProperty']) if $debug;
-# 						println "$expandedProperty expanded value is " . Dumper($expandedValue) if $debug;
-						$result->{$expandedProperty}	= $expandedValue; # 13.4.16
-						println "13.4.10 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
-					}
-
-					println "13.4.17 going to next element key" if $debug;
-					next; # 13.4.17
+				println "13.15 [$nesting_key]" if $debug;
+				println "13.15.1" if $debug;
+# 					next unless (exists $element->{$nesting_key});
+				my $nested_values	= $element->{$nesting_key}; # 13.15.1
+# 				if (not defined $nested_values) {
+# 					$nested_values	= [];
+# 				}
+				if (not(ref($nested_values)) or ref($nested_values) ne 'ARRAY') {
+					$nested_values	= [$nested_values];
 				}
 
-
-				my $tdef	= $self->_ctx_term_defn($activeCtx, $key);
-
-				println "13.5 initializing container mapping" if $debug;
-				my $container_mapping	= $tdef->{'container_mapping'}; # 13.5
-				println(Data::Dumper->Dump([$container_mapping, $value], ['*container_mapping', '*value'])) if $debug;
-
-				if (exists($tdef->{'type_mapping'}) and $tdef->{'type_mapping'} eq '@json') {
-					println "13.6" if $debug;
-					$expandedValue	= { '@value' => $value, '@type' => '@json' }; # 13.6
-					println "13.6 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-				} elsif ($self->_cm_contains($container_mapping, '@language') and ref($value) eq 'HASH') {
-					println "13.7" if $debug;
-					println "13.7.1" if $debug;
-					$expandedValue	= [];
-					
-					println "13.7.2" if $debug;
-					my $direction	= $activeCtx->{'@direction'};
-					
-					if (exists $tdef->{'direction_mapping'}) {
-						println "13.7.3" if $debug;
-						$direction	= $tdef->{'direction_mapping'};
+				println "13.15.2" if $debug;
+				println(Data::Dumper->Dump([$nesting_key, $element, $nested_values], [qw(nesting_key element nested_values)]));
+				foreach my $nested_value (@$nested_values) {
+					my $__indent	= indent();
+					println '-----------------------------------------------------------------' if $debug;
+					println "13.15.2 loop iteration" if $debug;
+					if (ref($nested_value) ne 'HASH') {
+						println "13.15.2.1 " . Data::Dumper->Dump([$nested_value], ['*invalid_nest_value']) if $debug;
+						die 'invalid @nest value'; # 13.15.2.1
 					}
 					
-					println "13.7.4" if $debug;
-					for my $language (sort keys %$value) {
-						my $__indent	= indent();
-						my $language_value	= $value->{$language};
-						println "13.7.4 [$language]" if $debug;
-						
-						if (ref($language_value) ne 'ARRAY') {
-							println "13.7.4.1" if $debug;
-							$language_value	= [$language_value];
-						}
-						
-						println "13.7.4.2" if $debug;
-						foreach my $item (@$language_value) {
-							my $__indent	= indent();
-							unless (defined($item)) {
-								println "13.7.4.2.1" if $debug;
-								next;
-							}
-							
-							if (ref($item)) {
-								println "13.7.4.2.2" if $debug;
-								die 'invalid language map value';
-							}
-							
-							println "13.7.4.2.3" if $debug;
-							my $v	= {'@value' => $item, '@language' => $language};
-							my $well_formed	= 1; # TODO: check BCP47 well-formedness of $item
-							if ($item ne '@none' and not($well_formed)) {
-								warn "Language tag is not well-formed: $item";
-							}
-							# TODO: normalize language tag
-							
-							if ($language eq '@none') { # TODO: handle spec text "or expands to @none"
-								println "13.7.4.2.4" if $debug;
-								delete $v->{'@language'};
-							}
-							
-							if (defined($direction)) {
-								println "13.7.4.2.5" if $debug;
-								$v->{'@direction'}	= $direction;
-							}
-							
-							println "13.7.4.2.6" if $debug;
-							push(@$expandedValue, $v);
-						}
-					}
-					println "13.7 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-# 				} elsif ((exists $container_mapping->{'@index'} or exists $container_mapping->{'@type'} or exists $container_mapping->{'@id'}) and ref($value) eq 'HASH') {
-				} elsif ($self->_cm_contains_any($container_mapping, '@index', '@type', '@id') and ref($value) eq 'HASH') {
-					println "13.8" if $debug;
-					println "13.8.1" if $debug;
-					$expandedValue	= [];
-					
-					println "13.8.2" if $debug;
-					my $index_key	= $tdef->{'index_mapping'} // '@index';
-					
-					println "13.8.3" if $debug;
-					foreach my $index (sort keys %$value) {
-						my $__indent	= indent();
-						my $index_value	= $value->{$index};
-						println '-----------------------------------------------------------------' if $debug;
-						println "13.8.3 [$index]" if $debug;
-						my $map_context;
-						if ($self->_cm_contains_any($container_mapping, '@id', '@type')) {
-							println "13.8.3.1" if $debug;
-							$map_context	= $activeCtx->{'previous_context'} // $activeCtx;
-						} else {
-							$map_context	= $activeCtx;
-						}
-						
-						my $index_tdef	= $self->_ctx_term_defn($map_context, $index);
-						if ($self->_cm_contains_any($container_mapping, '@type') and exists $index_tdef->{'@context'}) {
-							println "13.8.3.2" if $debug;
-							$map_context	= $self->_4_1_2_ctx_processing($map_context, $index_tdef->{'@context'});
-						} else {
-							println "13.8.3.3" if $debug;
-							$map_context	= $activeCtx;
-						}
-						
-						println "13.8.3.4" if $debug;
-						my $expanded_index	= $self->_5_2_2_iri_expansion($activeCtx, $index, vocab => 1);
-
-						if (ref($index_value) ne 'ARRAY') {
-							println "13.8.3.5" if $debug;
-							$index_value	= [$index_value];
-						}
-						
-						println "13.8.3.6" if $debug;
-						$index_value	= $self->_expand($map_context, $key, $index_value, frameExpansion => $frameExpansion, ordered => $ordered);
-						println(Data::Dumper->Dump([$index_value], ['*index_value'])) if $debug;
-						
-						println "13.8.3.7" if $debug;
-						foreach my $item (@$index_value) {
-							my $__indent	= indent();
-							println '-----------------------------------------------------------------' if $debug;
-							println "13.8.3.7 [$item]" if $debug;
-							if ($self->_cm_contains($container_mapping, '@graph')) {
-								println(Data::Dumper->Dump([$container_mapping], ['*container_mapping'])) if $debug;
-								println "13.8.3.7.1" if $debug;
-								$item	= {'@graph' => (ref($item) eq 'ARRAY') ? $item : [$item]};
-								println(Data::Dumper->Dump([$item], ['*item'])) if $debug;
-							}
-
-							if ($self->_cm_contains($container_mapping, '@index') and $index_key ne '@index' and not exists $item->{'@index'} and $expanded_index ne '@none') {
-								println "13.8.3.7.2" if $debug;
-								my $index_property_values	= $expanded_index;
-								if (exists $item->{$index_key}) {
-									$index_property_values	.= $item->{$index_key};
-								}
-								$item->{$expanded_index}	= $index_property_values;
-								if ($self->_is_value_object($item)) {
-									my @keys	= sort keys %$item;
-									if (scalar(@keys) != 2) {
-										die 'invalid value object';
-									}
-								}
-							} elsif ($self->_cm_contains($container_mapping, '@index') and not exists $item->{'@index'} and $expanded_index ne '@none') {
-								println "13.8.3.7.3" if $debug;
-								$item->{'@index'}	= $index;
-								println(Data::Dumper->Dump([$item], ['*item'])) if $debug;
-							} elsif ($self->_cm_contains($container_mapping, '@id') and not exists $item->{'@id'} and $expanded_index ne '@none') {
-								println "13.8.3.7.4" if $debug;
-								$expanded_index	= $self->_5_2_2_iri_expansion($activeCtx, $index, documentRelative => 1);
-								$item->{'@id'}	= $expanded_index;
-							} elsif ($self->_cm_contains($container_mapping, '@type')) {
-								println "13.8.3.7.5" if $debug;
-								my $types	= $expanded_index;
-								if (exists $item->{'@type'} and $expanded_index ne '@none') {
-									$types	.= $item->{'@type'};
-								}
-								$item->{'@type'}	= $types;
-							}
-							
-							println "13.8.3.7.6" if $debug;
-							push(@$expandedValue, $item);
-						}
-					}
-					println "13.8 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-				} else {
-					println "13.9" if $debug;
-					$expandedValue	= $self->_5_1_2_expansion($activeCtx, $key, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.9
-					println "13.9 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+					println "13.15.2.2 ENTER    =================> recursive call to _5_1_2_expansion_step_13" if $debug;
+					my $__indent_2	= indent();
+					$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $nested_value); # 13.15.2.2
 				}
-			
-# 				warn Dumper($expandedValue);
-				if (not(defined($expandedValue))) {
-					println "13.10 going to next element key" if $debug;
-					next; # 13.10
-				}
-			
-				if ($self->_cm_contains($container_mapping, '@list') and not $self->_is_list_object($expandedValue)) {
-					# 13.11
-					println "13.11" if $debug;
-					my @values	= (ref($expandedValue) eq 'ARRAY') ? @$expandedValue : ($expandedValue);
-					$expandedValue	= { '@list' => \@values };
-					println "13.11 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-				}
-
-# 				if (exists $container_mapping->{'@graph'}) {
-				if ($self->_cm_contains($container_mapping, '@graph')) {
-					# 13.12
-					println "13.12" if $debug;
-					if (ref($expandedValue) ne 'ARRAY') {
-						$expandedValue	= [$expandedValue];
-					}
-					my @values;
-					foreach my $ev (@$expandedValue) {
-						if (ref($ev) eq 'HASH' and exists $ev->{'@graph'}) {
-							push(@values, $ev);
-						} else {
-							# 13.12.1
-							println "13.12.1" if $debug;
-							my $av	= (ref($ev) eq 'ARRAY') ? $ev : [$ev];
-							push(@values, {'@graph' => $av});
-						}
-					}
-					$expandedValue	= \@values;
-					println "13.12 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-				}
-			
-				if ($tdef->{'reverse'}) {
-					# 13.13
-					println "13.13" if $debug;
-					unless (exists $result->{'@reverse'}) {
-						println "13.13.1" if $debug;
-						$result->{'@reverse'}	= {};
-					}
-					
-					println "13.13.2" if $debug;
-					my $reverse_map	= $result->{'@reverse'};
-					
-					if (ref($expandedValue) ne 'ARRAY') {
-						println "13.13.3" if $debug;
-						$expandedValue	= [$expandedValue];
-					}
-					
-					foreach my $item (@$expandedValue) {
-						println "13.13.4" if $debug;
-						if ($self->_is_value_object($item) or $self->_is_list_object($item)) {
-							println "13.13.4.1" if $debug;
-							die 'invalid reverse property value';
-						}
-						
-						unless (exists $reverse_map->{$expandedProperty}) {
-							println "13.13.4.2" if $debug;
-							$reverse_map->{$expandedProperty}	= [];
-						}
-						
-						println "13.13.4.3" if $debug;
-						push(@{ $reverse_map->{$expandedProperty} }, $item);
-					}
-					println "13.13 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-				} else {
-					# 13.14
-					println "13.14" if $debug;
-					unless (exists $result->{$expandedProperty}) {
-						println "13.14.1" if $debug;
-						$result->{$expandedProperty}	= []; # 13.14.1
-					}
-
-					println "13.14.2" if $debug;
-					if (ref($expandedValue) eq 'ARRAY') {
-						push(@{$result->{$expandedProperty}}, @$expandedValue); # 13.14.2
-					} elsif (ref($expandedValue)) {
-						# NOTE: I'm assuming that this is the intention of 13.14.2,
-						# but it isn't actually spelled out in the spec text.
-						println "setting result[$expandedProperty]" if $debug;
-						push(@{$result->{$expandedProperty}}, $expandedValue); # 13.14.2
-					}
-					println "13.14 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-				}
-			
-				foreach my $nesting_key (keys %$nests) {
-					# 13.15
-					println "13.15" if $debug;
-					println "13.15.1" if $debug;
-					my $nested_values	= $nests->{$nesting_key} // []; # 13.15.1
-					die "must be an array: $nested_values" unless (ref($nested_values) eq 'ARRAY');
-
-					println "13.15.2" if $debug;
-					foreach my $nested_value (@$nested_values) {
-						my $__indent	= indent();
-						println "13.15.2 loop iteration" if $debug;
-						println "13.15.2.1" if $debug;
-						die 'invalid @nest value' if (ref($nested_value) ne 'HASH'); # 13.15.2.1
-						
-						println "13.15.2.2" if $debug;
-						push(@elements, $nested_value); # 13.15.2.2
-					}
-				}
-				println "after 13.15 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 			}
-		}
+# 			println "after 13.15 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+############### XXX
 
 		if (exists $result->{'@value'}) {
 			# 14
@@ -1697,6 +1180,622 @@ package JSONLD {
 		return $result; # 19
 	}
 	
+	sub _5_1_2_expansion_step_13 {
+		my $self			= shift;
+		my $activeCtx		= shift;
+		my $type_scoped_ctx	= shift;
+		my $result			= shift;
+		my $activeProp		= shift;
+		my $input_type		= shift;
+		my $nests			= shift;
+		my $ordered			= shift;
+		my $frameExpansion	= shift;
+		my $element			= shift;
+		println "13 --- processing " . Data::Dumper->Dump([$element], ['element']) if ($debug);
+		foreach my $key (sort keys %$element) {
+			my $__indent	= indent();
+			my $value	= $element->{$key};
+			# 13
+			println '-----------------------------------------------------------------' if $debug;
+			println "13 [$key] " . Data::Dumper->Dump([$value], ['value']) if $debug;
+			if ($key eq '@context') {
+				println "13.1 going to next element key" if $debug;
+				next; # 13.1
+			}
+			local($Data::Dumper::Indent)	= 1;
+			println(Data::Dumper->Dump([$activeCtx], ['activeCtx'])) if $debug;
+			
+			println "13.2" if $debug;
+			my $expandedProperty	= $self->_5_2_2_iri_expansion($activeCtx, $key, vocab => 1); # 13.2
+			println "13.2 " . Data::Dumper->Dump([$expandedProperty], ['expandedProperty']) if $debug;
+			println(Data::Dumper->Dump([$expandedProperty], ['expandedProperty'])) if $debug;
+			if (not(defined($expandedProperty)) or ($expandedProperty !~ /:/ and not exists $keywords{$expandedProperty})) {
+				println "13.3 going to next element key" if $debug;
+				next; # 13.3
+			}
+		
+			my $expandedValue;
+			if (exists $keywords{$expandedProperty}) {
+				# 13.4
+				println "13.4 keyword: $expandedProperty" if $debug;
+				
+				if (defined($activeProp) and $activeProp eq '@reverse') {
+					println "13.4.1" if $debug;
+					die 'invalid reverse property map'; # 13.4.1
+				}
+
+				if (exists $result->{$expandedProperty}) {
+					my $p	= $result->{$expandedProperty};
+					if ($p ne '@included' and $p ne '@type') {
+						println "13.4.2" if $debug;
+						die 'colliding keywords'; # 13.4.2
+					}
+				}
+				
+				# NOTE: another case of an "Otherwise" applying to a partial conjunction
+				if ($expandedProperty eq '@id') {
+					if (ref($value)) {
+						println "13.4.3 invalid" if $debug;
+						die 'invalid @id value';
+					} else {
+						println "13.4.3" if $debug;
+						$expandedValue	= $self->_5_2_2_iri_expansion($activeCtx, $value, documentRelative => 1);
+						println "13.4.3 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+					}
+				}
+
+				if ($expandedProperty eq '@type') {
+					println "13.4.4" if $debug;
+					my $is_string = not(ref($value));
+					my $is_array	= ref($value) eq 'ARRAY';
+					my $is_array_of_strings	= ($is_array and all { not(ref($_)) } @$value);
+					if (not($is_string) and not($is_array_of_strings)) {
+						println "13.4.4.1 invalid" if $debug;
+						die 'invalid type value';
+					}
+					
+					if (ref($value) eq 'HASH' and scalar(%$value) == 0) {
+						println "13.4.4.2" if $debug;
+						$expandedValue	= $value;
+						println "13.4.4.2 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+					} elsif ($self->_is_default_object($value)) {
+						println "13.4.4.3" if $debug;
+						$expandedValue	= { '@default' => $self->_5_2_2_iri_expansion($type_scoped_ctx, $value, vocab => 1, documentRelative => 1) };
+						println "13.4.4.3 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+					} else {
+						println "13.4.4.4" if $debug;
+						if (ref($value)) {
+							$expandedValue	= [map {$self->_5_2_2_iri_expansion($type_scoped_ctx, $_, vocab => 1, documentRelative => 1)} @$value];
+						} else {
+							$expandedValue	= $self->_5_2_2_iri_expansion($type_scoped_ctx, $value, vocab => 1, documentRelative => 1);
+						}
+						println "13.4.4.4 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+					}
+					
+					if (my $t = $result->{'@type'}) {
+						println "13.4.4.5" if $debug;
+						if (ref($expandedValue) ne 'ARRAY') {
+							$expandedValue	= [$expandedValue];
+						}
+						unshift(@$expandedValue, $t);
+						println "13.4.4.5 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+					}
+				}
+
+				if ($expandedProperty eq '@graph') {
+					println "13.4.5" if $debug;
+					my $v	= $self->_expand($activeCtx, '@graph', $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.5
+					# TODO: ensure that expanded value is an array of one or more maps
+					$expandedValue	= $v;
+					println "13.4.5 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+				}
+
+				if ($expandedProperty eq '@included') {
+					println "13.4.6" if $debug;
+					if ($self->processing_mode eq 'json-ld-1.0') {
+						println "13.4.6.1" if $debug;
+						next;
+					}
+					
+					println "13.4.6.2" if $debug;
+					$expandedValue	= $self->_expand($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered);
+					unless (ref($expandedValue) eq 'ARRAY') {
+						$expandedValue	= [$expandedValue];
+					}
+					
+					foreach my $v (@$expandedValue) {
+						unless ($self->_is_node_object($v)) {
+							println "13.4.6.3" if $debug;
+							die 'invalid @included value';
+						}
+					}
+					
+					if (exists $result->{'@include'}) {
+						println "13.4.6.4" if $debug;
+						unshift(@$expandedValue, $result->{'@include'});
+					}
+					println "13.4.6 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+				} elsif ($expandedProperty eq '@value') {
+					println "13.4.7" if $debug;
+					if ($input_type eq '@json') {
+						println "13.4.7.1" if $debug;
+						$expandedValue	= $value; # 13.4.7.1
+						if ($self->processing_mode eq 'json-ld-1.0') {
+							die 'invalid value object value';
+						}
+					} elsif (ref($value) and defined($value)) {
+						println "13.4.7.2" if $debug; # NOTE: the language here is ambiguous: "if value is not a scalar or null"
+						die 'invalid value object value';
+					} else {
+						println "13.4.7.3" if $debug;
+						$expandedValue	= $value;
+					}
+					
+					unless (defined($expandedValue)) {
+						println "13.4.7.4" if $debug;
+						$result->{'@value'}	= undef;
+						next;
+					}
+					println "13.4.7 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+				}
+
+				# NOTE: again with the "Otherwise" that seems to apply to only half the conjunction
+				if ($expandedProperty eq '@language') {
+					println "13.4.8" if $debug;
+					if (ref($value)) {
+						println "13.4.8.1" if $debug;
+						if ($frameExpansion) {
+							println "13.4.8.1 TODO: frameExpansion support"; # if $debug;
+						}
+						die 'invalid language-tagged string';
+					}
+					println "13.4.8.2" if $debug;
+					$expandedValue	= $value; # 13.4.8.2
+					# TODO: validate language tag against BCP47
+					println "13.4.8 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+				}
+
+				if ($expandedProperty eq '@direction') {
+					println "13.4.9" if $debug;
+					if ($self->processing_mode eq 'json-ld-1.0') {
+						println "13.4.9.1" if $debug;
+						next;
+					}
+
+					if ($value ne 'ltr' and $value ne 'rtl') {
+						println "13.4.9.2" if $debug;
+						die 'invalid base direction';
+					}
+
+					println "13.4.9.3" if $debug;
+					$expandedValue	= $value;
+
+					if ($frameExpansion) {
+						println "13.4.9.4 TODO: frameExpansion support"; # if $debug;
+					}
+					println "13.4.9 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+				}
+
+				if ($expandedProperty eq '@index') {
+					println "13.4.10" if $debug;
+					if (ref($value)) {
+						println "13.4.10.1" if $debug;
+						die 'invalid @index value';
+					}
+					
+					println "13.4.10.2" if $debug;
+					$expandedValue	= $value;
+					println "13.4.10 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+				}
+
+				if ($expandedProperty eq '@list') {
+					println "13.4.11" if $debug;
+					if (not defined($activeProp) or $activeProp eq '@graph') {
+						println "13.4.11.1" if $debug;
+						next;
+					}
+
+					println "13.4.11.2" if $debug;
+					$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered);
+					println "13.4.11 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+				}
+
+				if ($expandedProperty eq '@set') {
+					println "13.4.12" if $debug;
+					$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered);
+					println "13.4.12 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+				}
+
+				# NOTE: the language here is really confusing. the first conditional in 13.4.13 is the conjunction "expanded property is @reverse and value is not a map".
+				#       however, by context it seems that really everything under 13.4.13 assumes expanded property is @reverse, and the first branch is dependent only on 'value is not a map'.
+				if ($expandedProperty eq '@reverse') {
+					println "13.4.13" if $debug;
+					if (ref($value) ne 'HASH') {
+						println "13.4.13.1" if $debug;
+						die 'invalid @reverse value';
+					} else {
+						println "13.4.13.2" if $debug;
+						$expandedValue	= $self->_expand($activeCtx, '@reverse', $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.13.1
+						
+						if (ref($expandedValue) eq 'HASH' and exists $expandedValue->{'@reverse'}) { # NOTE: spec text does not assert that expandedValue is a map
+							println "13.4.13.3" if $debug;
+							foreach my $property (keys %{ $expandedValue->{'@reverse'} }) {
+								my $__indent	= indent();
+								println "13.4.13.3 [$property]" if $debug;
+								my $item	= $expandedValue->{'@reverse'}{$property};
+								if (not exists $result->{$property}) {
+									println "13.4.13.3.1" if $debug;
+									$result->{$property}	= [];
+								}
+								
+								println "13.4.13.3.2" if $debug;
+								push(@{ $result->{$property} }, $item);
+							}
+						}
+						
+						if (ref($expandedValue) eq 'HASH') { # NOTE: spec text does not assert that expandedValue is a map
+							my @keys	= grep { $_ ne '@reverse' } keys %$expandedValue;
+							if (scalar(@keys)) {
+								println "13.4.13.4" if $debug;
+							
+								if (not exists $result->{'@reverse'}) {
+									println "13.4.13.4.1" if $debug;
+									$result->{'@reverse'}	= {};
+								}
+							
+								println "13.4.13.4.2" if $debug;
+								my $reverse_map	= $result->{'@reverse'};
+							
+								println "13.4.13.4.3" if $debug;
+								foreach my $property (grep { $_ ne '@reverse' } keys %{ $expandedValue }) {
+									my $__indent	= indent();
+									println "13.4.13.4.3 [$property]" if $debug;
+									my $items	= $expandedValue->{$property};
+								
+									println "13.4.13.4.3.1" if $debug;
+									foreach my $item (@$items) {
+										my $__indent	= indent();
+										if ($self->_is_value_object($item) or $self->_is_list_object($item)) {
+											println "13.4.13.4.3.1.1" if $debug;
+											die 'invalid reverse property value';
+										}
+									
+										if (not exists $reverse_map->{$property}) {
+											println "13.4.13.4.3.1.2" if $debug;
+											$reverse_map->{$property}	= [];
+										}
+									
+										println "13.4.13.4.3.1.3" if $debug;
+										push(@{ $reverse_map->{$property} }, $item);
+									}
+								}
+							}
+						}
+						
+						println "13.4.13.5 going to next element key" if $debug;
+						next; # 13.4.13.5
+					}
+				}
+
+				if ($expandedProperty eq '@nest') {
+					println "13.4.14 adding '$key' to nests" if $debug;
+					$nests->{$key}	//= [];
+					next;
+				}
+
+				if ($frameExpansion) {
+					my %other_framings	= map { $_ => 1 } qw(@explicit @default @embed @explicit @omitDefault @requireAll);
+					if ($other_framings{$expandedProperty}) {
+						println "13.4.15" if $debug;
+						$expandedValue	= $self->_expand($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.15
+						println "13.4.15 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+					}
+				}
+				
+				unless (not(defined($expandedValue)) and $expandedProperty eq '@value' and $input_type eq '@json') {
+					println "13.4.16 setting " . Data::Dumper->Dump([$expandedValue], ['*expandedProperty']) if $debug;
+# 						println "$expandedProperty expanded value is " . Dumper($expandedValue) if $debug;
+					$result->{$expandedProperty}	= $expandedValue; # 13.4.16
+					println "13.4.10 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+				}
+
+				println "13.4.17 going to next element key" if $debug;
+				next; # 13.4.17
+			}
+
+
+			my $tdef	= $self->_ctx_term_defn($activeCtx, $key);
+
+			println "13.5 initializing container mapping" if $debug;
+			my $container_mapping	= $tdef->{'container_mapping'}; # 13.5
+			println(Data::Dumper->Dump([$container_mapping, $value], ['*container_mapping', '*value'])) if $debug;
+
+			if (exists($tdef->{'type_mapping'}) and $tdef->{'type_mapping'} eq '@json') {
+				println "13.6" if $debug;
+				$expandedValue	= { '@value' => $value, '@type' => '@json' }; # 13.6
+				println "13.6 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+			} elsif ($self->_cm_contains($container_mapping, '@language') and ref($value) eq 'HASH') {
+				println "13.7" if $debug;
+				println "13.7.1" if $debug;
+				$expandedValue	= [];
+				
+				println "13.7.2" if $debug;
+				my $direction	= $activeCtx->{'@direction'};
+				
+				if (exists $tdef->{'direction_mapping'}) {
+					println "13.7.3" if $debug;
+					$direction	= $tdef->{'direction_mapping'};
+				}
+				
+				println "13.7.4" if $debug;
+				for my $language (sort keys %$value) {
+					my $__indent	= indent();
+					my $language_value	= $value->{$language};
+					println "13.7.4 [$language]" if $debug;
+					
+					if (ref($language_value) ne 'ARRAY') {
+						println "13.7.4.1" if $debug;
+						$language_value	= [$language_value];
+					}
+					
+					println "13.7.4.2" if $debug;
+					foreach my $item (@$language_value) {
+						my $__indent	= indent();
+						unless (defined($item)) {
+							println "13.7.4.2.1" if $debug;
+							next;
+						}
+						
+						if (ref($item)) {
+							println "13.7.4.2.2" if $debug;
+							die 'invalid language map value';
+						}
+						
+						println "13.7.4.2.3" if $debug;
+						my $v	= {'@value' => $item, '@language' => $language};
+						my $well_formed	= 1; # TODO: check BCP47 well-formedness of $item
+						if ($item ne '@none' and not($well_formed)) {
+							warn "Language tag is not well-formed: $item";
+						}
+						# TODO: normalize language tag
+						
+						my $expandedLanguage = $self->_5_2_2_iri_expansion($activeCtx, $language);
+						if ($language eq '@none' or $expandedLanguage eq '@none') {
+							println "13.7.4.2.4" if $debug;
+							delete $v->{'@language'};
+						}
+						
+						if (defined($direction)) {
+							println "13.7.4.2.5" if $debug;
+							$v->{'@direction'}	= $direction;
+						}
+						
+						println "13.7.4.2.6" if $debug;
+						push(@$expandedValue, $v);
+					}
+				}
+				println "13.7 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+# 				} elsif ((exists $container_mapping->{'@index'} or exists $container_mapping->{'@type'} or exists $container_mapping->{'@id'}) and ref($value) eq 'HASH') {
+			} elsif ($self->_cm_contains_any($container_mapping, '@index', '@type', '@id') and ref($value) eq 'HASH') {
+				println "13.8" if $debug;
+				println "13.8.1" if $debug;
+				$expandedValue	= [];
+				
+				println "13.8.2" if $debug;
+				my $index_key	= $tdef->{'index_mapping'} // '@index';
+				
+				println "13.8.3" if $debug;
+				foreach my $index (sort keys %$value) {
+					my $__indent	= indent();
+					my $index_value	= $value->{$index};
+					println '-----------------------------------------------------------------' if $debug;
+					println "13.8.3 [$index]" if $debug;
+					my $map_context;
+					if ($self->_cm_contains_any($container_mapping, '@id', '@type')) {
+						println "13.8.3.1" if $debug;
+						$map_context	= $activeCtx->{'previous_context'} // $activeCtx;
+					} else {
+						$map_context	= $activeCtx;
+					}
+					
+					my $index_tdef	= $self->_ctx_term_defn($map_context, $index);
+					if ($self->_cm_contains_any($container_mapping, '@type') and exists $index_tdef->{'@context'}) {
+						println "13.8.3.2" if $debug;
+						$map_context	= $self->_4_1_2_ctx_processing($map_context, $index_tdef->{'@context'});
+					} else {
+						println "13.8.3.3" if $debug;
+						$map_context	= $activeCtx;
+					}
+					
+					println "13.8.3.4" if $debug;
+					my $expanded_index	= $self->_5_2_2_iri_expansion($activeCtx, $index, vocab => 1);
+
+					if (ref($index_value) ne 'ARRAY') {
+						println "13.8.3.5" if $debug;
+						$index_value	= [$index_value];
+					}
+					
+					println "13.8.3.6" if $debug;
+					$index_value	= $self->_expand($map_context, $key, $index_value, frameExpansion => $frameExpansion, ordered => $ordered);
+					println(Data::Dumper->Dump([$index_value], ['*index_value'])) if $debug;
+					
+					println "13.8.3.7" if $debug;
+					foreach my $item (@$index_value) {
+						my $__indent	= indent();
+						println '-----------------------------------------------------------------' if $debug;
+						println "13.8.3.7 [$item]" if $debug;
+						if ($self->_cm_contains($container_mapping, '@graph')) {
+							println(Data::Dumper->Dump([$container_mapping], ['*container_mapping'])) if $debug;
+							println "13.8.3.7.1" if $debug;
+							$item	= {'@graph' => (ref($item) eq 'ARRAY') ? $item : [$item]};
+							println(Data::Dumper->Dump([$item], ['*item'])) if $debug;
+						}
+
+						if ($self->_cm_contains($container_mapping, '@index') and $index_key ne '@index' and not exists $item->{'@index'} and $expanded_index ne '@none') {
+							println "13.8.3.7.2" if $debug;
+							my $index_property_values	= $expanded_index;
+							if (exists $item->{$index_key}) {
+								$index_property_values	.= $item->{$index_key};
+							}
+							$item->{$expanded_index}	= $index_property_values;
+							if ($self->_is_value_object($item)) {
+								my @keys	= sort keys %$item;
+								if (scalar(@keys) != 2) {
+									die 'invalid value object';
+								}
+							}
+						} elsif ($self->_cm_contains($container_mapping, '@index') and not exists $item->{'@index'} and $expanded_index ne '@none') {
+							println "13.8.3.7.3" if $debug;
+							$item->{'@index'}	= $index;
+							println(Data::Dumper->Dump([$item], ['*item'])) if $debug;
+						} elsif ($self->_cm_contains($container_mapping, '@id') and not exists $item->{'@id'} and $expanded_index ne '@none') {
+							println "13.8.3.7.4" if $debug;
+							$expanded_index	= $self->_5_2_2_iri_expansion($activeCtx, $index, documentRelative => 1);
+							$item->{'@id'}	= $expanded_index;
+						} elsif ($self->_cm_contains($container_mapping, '@type')) {
+							println "13.8.3.7.5" if $debug;
+							my $types	= $expanded_index;
+							if (exists $item->{'@type'} and $expanded_index ne '@none') {
+								$types	.= $item->{'@type'};
+								$item->{'@type'}	= $types; # XXXXXX tm012
+							}
+# 							$item->{'@type'}	= $types;
+						}
+						
+						println "13.8.3.7.6" if $debug;
+						push(@$expandedValue, $item);
+					}
+				}
+				println "13.8 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+			} else {
+				println "13.9" if $debug;
+				$expandedValue	= $self->_5_1_2_expansion($activeCtx, $key, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.9
+				println "13.9 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+			}
+		
+# 				warn Dumper($expandedValue);
+			if (not(defined($expandedValue))) {
+				println "13.10 going to next element key" if $debug;
+				next; # 13.10
+			}
+		
+			if ($self->_cm_contains($container_mapping, '@list') and not $self->_is_list_object($expandedValue)) {
+				# 13.11
+				println "13.11" if $debug;
+				my @values	= (ref($expandedValue) eq 'ARRAY') ? @$expandedValue : ($expandedValue);
+				$expandedValue	= { '@list' => \@values };
+				println "13.11 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+			}
+
+# 				if (exists $container_mapping->{'@graph'}) {
+			if ($self->_cm_contains($container_mapping, '@graph')) {
+				# 13.12
+				println "13.12" if $debug;
+				if (ref($expandedValue) ne 'ARRAY') {
+					$expandedValue	= [$expandedValue];
+				}
+				my @values;
+				foreach my $ev (@$expandedValue) {
+					if (ref($ev) eq 'HASH' and exists $ev->{'@graph'}) {
+						push(@values, $ev);
+					} else {
+						# 13.12.1
+						println "13.12.1" if $debug;
+						my $av	= (ref($ev) eq 'ARRAY') ? $ev : [$ev];
+						push(@values, {'@graph' => $av});
+					}
+				}
+				$expandedValue	= \@values;
+				println "13.12 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+			}
+		
+			if ($tdef->{'reverse'}) {
+				# 13.13
+				println "13.13" if $debug;
+				unless (exists $result->{'@reverse'}) {
+					println "13.13.1" if $debug;
+					$result->{'@reverse'}	= {};
+				}
+				
+				println "13.13.2" if $debug;
+				my $reverse_map	= $result->{'@reverse'};
+				
+				if (ref($expandedValue) ne 'ARRAY') {
+					println "13.13.3" if $debug;
+					$expandedValue	= [$expandedValue];
+				}
+				
+				foreach my $item (@$expandedValue) {
+					println "13.13.4" if $debug;
+					if ($self->_is_value_object($item) or $self->_is_list_object($item)) {
+						println "13.13.4.1" if $debug;
+						die 'invalid reverse property value';
+					}
+					
+					unless (exists $reverse_map->{$expandedProperty}) {
+						println "13.13.4.2" if $debug;
+						$reverse_map->{$expandedProperty}	= [];
+					}
+					
+					println "13.13.4.3" if $debug;
+					push(@{ $reverse_map->{$expandedProperty} }, $item);
+				}
+				println "13.13 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+			} else {
+				# 13.14
+				println "13.14" if $debug;
+				unless (exists $result->{$expandedProperty}) {
+					println "13.14.1" if $debug;
+					$result->{$expandedProperty}	= []; # 13.14.1
+				}
+
+				println "13.14.2" if $debug;
+				if (ref($expandedValue) eq 'ARRAY') {
+					push(@{$result->{$expandedProperty}}, @$expandedValue); # 13.14.2
+				} elsif (ref($expandedValue)) {
+					# NOTE: I'm assuming that this is the intention of 13.14.2,
+					# but it isn't actually spelled out in the spec text.
+					println "setting result[$expandedProperty]" if $debug;
+					push(@{$result->{$expandedProperty}}, $expandedValue); # 13.14.2
+				}
+				println "13.14 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+			}
+		
+# 			println "13.15" if $debug;
+# 			foreach my $nesting_key (keys %$nests) {
+# 				# 13.15
+# 				my $__indent	= indent();
+# 				println "13.15 [$nesting_key]" if $debug;
+# 				println "13.15.1" if $debug;
+# # 					next unless (exists $element->{$nesting_key});
+# 				my $nested_values	= $element->{$nesting_key}; # 13.15.1
+# # 				if (not defined $nested_values) {
+# # 					$nested_values	= [];
+# # 				}
+# 				if (not(ref($nested_values)) or ref($nested_values) ne 'ARRAY') {
+# 					$nested_values	= [$nested_values];
+# 				}
+# 
+# 				println "13.15.2" if $debug;
+# 				println(Data::Dumper->Dump([$nesting_key, $element, $nested_values], [qw(nesting_key element nested_values)]));
+# 				foreach my $nested_value (@$nested_values) {
+# 					my $__indent	= indent();
+# 					println '-----------------------------------------------------------------' if $debug;
+# 					println "13.15.2 loop iteration" if $debug;
+# 					if (ref($nested_value) ne 'HASH') {
+# 						println "13.15.2.1 " . Data::Dumper->Dump([$nested_value], ['*invalid_nest_value']) if $debug;
+# 						die 'invalid @nest value'; # 13.15.2.1
+# 					}
+# 					
+# 					println "13.15.2.2 ENTER    =================> recursive call to _5_1_2_expansion_step_13" if $debug;
+# 					my $__indent	= indent();
+# 					$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $nested_value); # 13.15.2.2
+# 				}
+# 			}
+# 			println "after 13.15 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+		}
+	}
+
 	sub _5_2_2_iri_expansion {
 		my $self		= shift;
 		my $activeCtx	= shift;
