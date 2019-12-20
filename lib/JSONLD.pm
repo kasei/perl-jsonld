@@ -1048,48 +1048,49 @@ package JSONLD {
 		my $nests	= {}; # 12b
 		my $input_type	= '';
 		foreach my $key (sort keys %$element) {
-			if ($key eq '@type') {
+			my $expandedKey	= $self->_5_2_2_iri_expansion($activeCtx, $key);
+			if ($expandedKey eq '@type') {
 				$input_type	= $element->{$key};
 				last;
 			}
 		}
+		println "12 " . Data::Dumper->Dump([$input_type], ['*input_type']) if $debug;
 		
 		$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
 
-############### XXX
-			println "13.15-prime" if $debug;
-			foreach my $nesting_key (keys %$nests) {
-				# 13.15
-				my $__indent	= indent();
-				println "13.15 [$nesting_key]" if $debug;
-				println "13.15.1" if $debug;
+		# https://github.com/w3c/json-ld-api/issues/262
+		println "13.15" if $debug;
+		foreach my $nesting_key (keys %$nests) {
+			# 13.15
+			my $__indent	= indent();
+			println "13.15 [$nesting_key]" if $debug;
+			println "13.15.1" if $debug;
 # 					next unless (exists $element->{$nesting_key});
-				my $nested_values	= $element->{$nesting_key}; # 13.15.1
+			my $nested_values	= $element->{$nesting_key}; # 13.15.1
 # 				if (not defined $nested_values) {
 # 					$nested_values	= [];
 # 				}
-				if (not(ref($nested_values)) or ref($nested_values) ne 'ARRAY') {
-					$nested_values	= [$nested_values];
-				}
-
-				println "13.15.2" if $debug;
-				println(Data::Dumper->Dump([$nesting_key, $element, $nested_values], [qw(nesting_key element nested_values)]));
-				foreach my $nested_value (@$nested_values) {
-					my $__indent	= indent();
-					println '-----------------------------------------------------------------' if $debug;
-					println "13.15.2 loop iteration" if $debug;
-					if (ref($nested_value) ne 'HASH') {
-						println "13.15.2.1 " . Data::Dumper->Dump([$nested_value], ['*invalid_nest_value']) if $debug;
-						die 'invalid @nest value'; # 13.15.2.1
-					}
-					
-					println "13.15.2.2 ENTER    =================> recursive call to _5_1_2_expansion_step_13" if $debug;
-					my $__indent_2	= indent();
-					$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $nested_value); # 13.15.2.2
-				}
+			if (not(ref($nested_values)) or ref($nested_values) ne 'ARRAY') {
+				$nested_values	= [$nested_values];
 			}
-# 			println "after 13.15 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
-############### XXX
+
+			println "13.15.2" if $debug;
+			println(Data::Dumper->Dump([$nesting_key, $element, $nested_values], [qw(nesting_key element nested_values)]));
+			foreach my $nested_value (@$nested_values) {
+				my $__indent	= indent();
+				println '-----------------------------------------------------------------' if $debug;
+				println "13.15.2 loop iteration" if $debug;
+				if (ref($nested_value) ne 'HASH') {
+					println "13.15.2.1 " . Data::Dumper->Dump([$nested_value], ['*invalid_nest_value']) if $debug;
+					die 'invalid @nest value'; # 13.15.2.1
+				}
+				
+				println "13.15.2.2 ENTER    =================> call to _5_1_2_expansion_step_13" if $debug;
+				my $__indent_2	= indent();
+				$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $nested_value); # 13.15.2.2
+			}
+		}
+# 		println "after 13.15 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 
 		if (exists $result->{'@value'}) {
 			# 14
@@ -1316,15 +1317,16 @@ package JSONLD {
 					}
 					println "13.4.6 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 				} elsif ($expandedProperty eq '@value') {
-					println "13.4.7" if $debug;
-					if ($input_type eq '@json') {
+					println "13.4.7 " . Data::Dumper->Dump([$input_type], ['*input_type']) if $debug;
+					my $expandedInputType	= $self->_5_2_2_iri_expansion($activeCtx, $input_type); # https://github.com/w3c/json-ld-api/issues/269
+					if ($expandedInputType eq '@json') {
 						println "13.4.7.1" if $debug;
 						$expandedValue	= $value; # 13.4.7.1
 						if ($self->processing_mode eq 'json-ld-1.0') {
 							die 'invalid value object value';
 						}
-					} elsif (ref($value) and defined($value)) {
-						println "13.4.7.2" if $debug; # NOTE: the language here is ambiguous: "if value is not a scalar or null"
+					} elsif (not (not(ref($value)) or not defined($value))) { # "if value is not a scalar or null, an invalid value object value error has been detected"
+						println "13.4.7.2 " .  Data::Dumper->Dump([$value], ['*value']) if $debug; # NOTE: the language here is ambiguous: "if value is not a scalar or null"
 						die 'invalid value object value';
 					} else {
 						println "13.4.7.3" if $debug;
