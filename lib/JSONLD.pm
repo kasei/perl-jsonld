@@ -1,27 +1,57 @@
-use v5.18;
-use autodie;
-use utf8;
-use Carp qw(confess);
-use Test::More;
-use Test::Exception;
-use FindBin qw($Bin);
-use File::Glob qw(bsd_glob);
-use LWP;
-use File::Spec;
-use Data::Dumper;
+=head1 NAME
+
+JSONLD - A toolkit for interacting with JSON-LD data.
+
+=head1 VERSION
+
+This document describes JSONLD version 0.001
+
+=head1 SYNOPSIS
+
+  use v5.14;
+  use JSON;
+  use JSONLD;
+  
+  my $infile = 'test.jsonld';
+  open(my $fh, '<', $infile) or die $!;
+  my $content	= do { local($/); <$fh> };
+  my $data = JSON->new()->boolean_values(0, 1)->decode($content);
+  
+  my $jld = JSONLD->new();
+  my $expanded	= $jld->expand($data);
+
+=head1 DESCRIPTION
+
+This module implements part of the JSON-LD 1.1 standard for manipulating JSON data as
+linked data.
+
+=head1 METHODS
+
+=over 4
+
+=cut
 
 package JSONLD {
+	use v5.18;
+	use autodie;
+	use utf8;
+	use Test::More;
+	use Test::Exception;
 	use Moo;
-	use IRI;
-	use JSON;
-	use Encode qw(encode);
-	use JSON qw(decode_json);
-	use B qw(svref_2object SVf_IOK SVf_POK);
+	use LWP;
 	use List::Util qw(all any);
+	use JSON;
+	use JSON qw(decode_json);
+	use IRI;
+	use FindBin qw($Bin);
+	use File::Spec;
+	use File::Glob qw(bsd_glob);
+	use Encode qw(encode);
 	use Debug::ShowStuff qw(indent println);
 	use Data::Dumper;
-	use Carp qw(confess);
 	use Clone 'clone';
+	use Carp qw(confess);
+	use B qw(svref_2object SVf_IOK SVf_POK);
 	use namespace::clean;
 	
 	has 'base_iri' => (is => 'rw', required => 0, default => sub { IRI->new('http://example.org/') });
@@ -32,6 +62,12 @@ package JSONLD {
 	our $debug		= 0;
 	my %keywords	= map { $_ => 1 } qw(: @base @container @context @direction @graph @id @import @included @index @json @language @list @nest @none @prefix @propagate @protected @reverse @set @type @value @version @vocab);
 	
+=item C<< expand( $data ) >>
+
+Returns the JSON-LD expansion of C<< $data >>.
+
+=cut
+
 	sub expand {
 		my $self	= shift;
 		my $d		= shift;
@@ -197,7 +233,6 @@ package JSONLD {
 		my $remote_contexts	= $args{remote_contexts} // [];
 		my $override_protected	= $args{override_protected} // 0;
 		my $base_iri	= $args{base_iri} // $self->base_iri->abs;
-		println "BASE IRI for LOCAL CONTEXT: $base_iri";
 
 		println "1" if $debug;
 		my $result	= clone($activeCtx); # 1
@@ -726,7 +761,7 @@ package JSONLD {
 					}
 				} elsif (any { $_ =~ /^[@](id|index)$/ } @$container) { # any { $_ eq '@graph' } @$container
 					
-				} elsif (any { $_ eq '@set' } @$container and any { $_ =~ /^[@](index|graph|id|type|language)$/ } @$container) { # https://github.com/w3c/json-ld-api/issues/242
+				} elsif (any { $_ eq '@set' } @$container and any { $_ =~ /^[@](index|graph|id|type|language)$/ } @$container) {
 					
 				} else {
 					warn Dumper($container);
@@ -864,7 +899,6 @@ package JSONLD {
 			}
 		}
 
-		# https://github.com/w3c/json-ld-api/issues/261
 		my @keys	= grep { not m/^[@](id|reverse|container|context|language|nest|prefix|type|direction|protected|index)$/ } keys %$value;
 		if (scalar(@keys)) {
 			println "28 " . Data::Dumper->Dump([\@keys, $value], ['invalid_keys', 'value']) if $debug;
@@ -1037,7 +1071,7 @@ package JSONLD {
 					my $tdef	= $self->_ctx_term_defn($activeCtx, $term);
 					if (my $c = $tdef->{'@context'}) {
 						println "11.2" if $debug;
-						$activeCtx	= $self->_4_1_2_ctx_processing($activeCtx, $c, propagate => 0); # https://github.com/w3c/json-ld-api/issues/246
+						$activeCtx	= $self->_4_1_2_ctx_processing($activeCtx, $c, propagate => 0);
 					}
 				}
 			}
@@ -1059,40 +1093,7 @@ package JSONLD {
 		println "12 " . Data::Dumper->Dump([$input_type], ['*input_type']) if $debug;
 		
 		$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
-
-		# https://github.com/w3c/json-ld-api/issues/262
-		println "13.15" if $debug;
-		foreach my $nesting_key (keys %$nests) {
-			# 13.15
-			my $__indent	= indent();
-			println "13.15 [$nesting_key]" if $debug;
-			println "13.15.1" if $debug;
-# 					next unless (exists $element->{$nesting_key});
-			my $nested_values	= $element->{$nesting_key}; # 13.15.1
-# 				if (not defined $nested_values) {
-# 					$nested_values	= [];
-# 				}
-			if (not(ref($nested_values)) or ref($nested_values) ne 'ARRAY') {
-				$nested_values	= [$nested_values];
-			}
-
-			println "13.15.2" if $debug;
-			println(Data::Dumper->Dump([$nesting_key, $element, $nested_values], [qw(nesting_key element nested_values)]));
-			foreach my $nested_value (@$nested_values) {
-				my $__indent	= indent();
-				println '-----------------------------------------------------------------' if $debug;
-				println "13.15.2 loop iteration" if $debug;
-				if (ref($nested_value) ne 'HASH') {
-					println "13.15.2.1 " . Data::Dumper->Dump([$nested_value], ['*invalid_nest_value']) if $debug;
-					die 'invalid @nest value'; # 13.15.2.1
-				}
-				
-				println "13.15.2.2 ENTER    =================> call to _5_1_2_expansion_step_13" if $debug;
-				my $__indent_2	= indent();
-				$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $nested_value); # 13.15.2.2
-			}
-		}
-# 		println "after 13.15 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+		$self->_5_1_2_expansion_step_13_15($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
 
 		if (exists $result->{'@value'}) {
 			# 14
@@ -1237,13 +1238,14 @@ package JSONLD {
 				
 				# NOTE: another case of an "Otherwise" applying to a partial conjunction
 				if ($expandedProperty eq '@id') {
-					if (ref($value)) {
-						println "13.4.3 invalid" if $debug;
+					println "13.4.3" if $debug;
+					if (ref($value) or not defined($value)) {
+						println "13.4.3.1 invalid" if $debug;
 						die 'invalid @id value';
 					} else {
-						println "13.4.3" if $debug;
+						println "13.4.3.2" if $debug;
 						$expandedValue	= $self->_5_2_2_iri_expansion($activeCtx, $value, documentRelative => 1);
-						println "13.4.3 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+						println "13.4.3.2 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 					}
 				}
 
@@ -1497,10 +1499,10 @@ package JSONLD {
 				}
 				
 				unless (not(defined($expandedValue)) and $expandedProperty eq '@value' and $input_type eq '@json') {
-					println "13.4.16 setting " . Data::Dumper->Dump([$expandedValue], ['*expandedProperty']) if $debug;
+					println "13.4.16 setting " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 # 						println "$expandedProperty expanded value is " . Dumper($expandedValue) if $debug;
 					$result->{$expandedProperty}	= $expandedValue; # 13.4.16
-					println "13.4.10 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+					println "13.4.16 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 				}
 
 				println "13.4.17 going to next element key" if $debug;
@@ -1763,40 +1765,67 @@ package JSONLD {
 				}
 				println "13.14 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 			}
-		
-# 			println "13.15" if $debug;
-# 			foreach my $nesting_key (keys %$nests) {
-# 				# 13.15
-# 				my $__indent	= indent();
-# 				println "13.15 [$nesting_key]" if $debug;
-# 				println "13.15.1" if $debug;
-# # 					next unless (exists $element->{$nesting_key});
-# 				my $nested_values	= $element->{$nesting_key}; # 13.15.1
-# # 				if (not defined $nested_values) {
-# # 					$nested_values	= [];
-# # 				}
-# 				if (not(ref($nested_values)) or ref($nested_values) ne 'ARRAY') {
-# 					$nested_values	= [$nested_values];
-# 				}
-# 
-# 				println "13.15.2" if $debug;
-# 				println(Data::Dumper->Dump([$nesting_key, $element, $nested_values], [qw(nesting_key element nested_values)]));
-# 				foreach my $nested_value (@$nested_values) {
-# 					my $__indent	= indent();
-# 					println '-----------------------------------------------------------------' if $debug;
-# 					println "13.15.2 loop iteration" if $debug;
-# 					if (ref($nested_value) ne 'HASH') {
-# 						println "13.15.2.1 " . Data::Dumper->Dump([$nested_value], ['*invalid_nest_value']) if $debug;
-# 						die 'invalid @nest value'; # 13.15.2.1
-# 					}
-# 					
-# 					println "13.15.2.2 ENTER    =================> recursive call to _5_1_2_expansion_step_13" if $debug;
-# 					my $__indent	= indent();
-# 					$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $nested_value); # 13.15.2.2
-# 				}
-# 			}
-# 			println "after 13.15 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 		}
+	}
+
+	sub _5_1_2_expansion_step_13_15 {
+		my $self			= shift;
+		my $activeCtx		= shift;
+		my $type_scoped_ctx	= shift;
+		my $result			= shift;
+		my $activeProp		= shift;
+		my $input_type		= shift;
+		my $nests			= shift;
+		my $ordered			= shift;
+		my $frameExpansion	= shift;
+		my $element			= shift;
+		
+		# https://github.com/w3c/json-ld-api/issues/262
+		println "13.15" if $debug;
+		my @keys			= keys %$nests;
+		foreach my $nesting_key (@keys) {
+### TODO: trying to make test tn005 work
+# 		while (scalar(%$nests)) {
+# 			my $nesting_key	= (keys %$nests)[0];
+			delete $nests->{$nesting_key};
+			# 13.15
+			my $__indent	= indent();
+			println "13.15 [$nesting_key]" if $debug;
+			println "13.15.1" if $debug;
+	# 		next unless (exists $element->{$nesting_key});
+			my $nested_values	= $element->{$nesting_key}; # 13.15.1
+	# 		if (not defined $nested_values) {
+	# 			$nested_values	= [];
+	# 		}
+			if (not(ref($nested_values)) or ref($nested_values) ne 'ARRAY') {
+				$nested_values	= [$nested_values];
+			}
+
+			println "13.15.2" if $debug;
+			println(Data::Dumper->Dump([$nesting_key, $element, $nested_values], [qw(nesting_key element nested_values)]));
+			foreach my $nested_value (@$nested_values) {
+				my $__indent	= indent();
+				println '-----------------------------------------------------------------' if $debug;
+				println "13.15.2 loop iteration" if $debug;
+				if (ref($nested_value) ne 'HASH') {
+					println "13.15.2.1 " . Data::Dumper->Dump([$nested_value], ['*invalid_nest_value']) if $debug;
+					die 'invalid @nest value'; # 13.15.2.1
+				}
+			
+				println "13.15.2.2 ENTER    =================> call to _5_1_2_expansion_step_13" if $debug;
+				my $__indent_2	= indent();
+				$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $nested_value); # 13.15.2.2
+
+### TODO: trying to make test tn005 work (when there is an inner @nest key inside the hash of the outer @nest key)
+# 				if (exists $nested_value->{'@nest'}) {
+# 					if (scalar(%$nests)) {
+# 						$self->_5_1_2_expansion_step_13_15($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
+# 					}
+# 				}
+			}
+		}
+# 		$self->_5_1_2_expansion_step_13_15($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
+		println "after 13.15 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 	}
 
 	sub _5_2_2_iri_expansion {
@@ -1828,6 +1857,7 @@ package JSONLD {
 		if ($value =~ /^@[A-Za-z]+$/) {
 			println "2" if $debug;
 			warn "IRI expansion attempted on a term that looks like a keyword: $value\n"; # 2
+			return;
 		}
 		
 		if (defined($localCtx) and my $v = $localCtx->{$value}) {
@@ -1950,3 +1980,37 @@ package JSONLD {
 		return $result; # 6
 	}
 }
+
+
+1;
+
+__END__
+
+=back
+
+=head1 BUGS
+
+Please report any bugs or feature requests to through the GitHub web interface
+at L<https://github.com/kasei/jsonld/issues>.
+
+=head1 SEE ALSO
+
+=over 4
+
+=item L<https://www.w3.org/TR/json-ld11/>
+
+=item L<https://www.w3.org/TR/json-ld-api/>
+
+=back
+
+=head1 AUTHOR
+
+Gregory Todd Williams  C<< <gwilliams@cpan.org> >>
+
+=head1 COPYRIGHT
+
+Copyright (c) 2019--2020 Gregory Todd Williams.
+This program is free software; you can redistribute it and/or modify it under
+the same terms as Perl itself.
+
+=cut
