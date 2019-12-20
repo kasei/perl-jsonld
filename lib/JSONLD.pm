@@ -1654,14 +1654,13 @@ package JSONLD {
 							println "13.8.3.7.4" if $debug;
 							$expanded_index	= $self->_5_2_2_iri_expansion($activeCtx, $index, documentRelative => 1);
 							$item->{'@id'}	= $expanded_index;
-						} elsif ($self->_cm_contains($container_mapping, '@type')) {
+						} elsif ($self->_cm_contains($container_mapping, '@type') and $expanded_index ne '@none') {
 							println "13.8.3.7.5" if $debug;
-							my $types	= $expanded_index;
-							if (exists $item->{'@type'} and $expanded_index ne '@none') {
-								$types	.= $item->{'@type'};
-								$item->{'@type'}	= $types; # XXXXXX tm012
+							my $types	= [$expanded_index];
+							if (exists $item->{'@type'}) {
+								push(@$types, $item->{'@type'});
 							}
-# 							$item->{'@type'}	= $types;
+							$item->{'@type'}	= $types;
 						}
 						
 						println "13.8.3.7.6" if $debug;
