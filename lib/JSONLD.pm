@@ -1227,8 +1227,8 @@ package JSONLD {
 
 				if (exists $result->{$expandedProperty}) {
 					my $p	= $result->{$expandedProperty};
-					if ($p ne '@included' and $p ne '@type') {
-						println "13.4.2" if $debug;
+					if ($expandedProperty ne '@included' and $expandedProperty ne '@type') {
+						println "13.4.2 colliding: $expandedProperty" if $debug;
 						die 'colliding keywords'; # 13.4.2
 					}
 				}
