@@ -4,7 +4,7 @@ JSONLD - A toolkit for interacting with JSON-LD data.
 
 =head1 VERSION
 
-This document describes JSONLD version 0.001
+This document describes JSONLD version 0.000_01
 
 =head1 SYNOPSIS
 
@@ -34,6 +34,7 @@ linked data.
 package JSONLD {
 	use v5.18;
 	use autodie;
+	our $VERSION	= '0.000_01';
 	use utf8;
 	use Test::More;
 	use Test::Exception;
@@ -119,7 +120,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 			println("is_abs_iri: 0");
 			return 0;
 		}
-		my $is_abs = ($i->has_scheme and $value eq $i->abs);
+		my $is_abs = (defined($i->scheme) and $value eq $i->abs);
 		return $is_abs;
 	}
 	
