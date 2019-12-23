@@ -220,6 +220,13 @@ Returns the JSON-LD expansion of C<< $data >>.
 		return (exists $value->{'@list'});
 	}
 	
+	sub _is_graph_object {
+		my $self	= shift;
+		my $value	= shift;
+		return 0 unless (ref($value) eq 'HASH');
+		return (exists $value->{'@graph'});
+	}
+	
 	sub _4_1_2_ctx_processing {
 		println "ENTER    =================> _4_1_2_ctx_processing" if $debug;
 		my $__indent	= indent();
@@ -1155,8 +1162,8 @@ Returns the JSON-LD expansion of C<< $data >>.
 		}
 		
 		println "after 16 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+		my @keys	= (ref($result) eq 'HASH') ? keys %$result : ();
 		if (ref($result) eq 'HASH') { # NOTE: assuming based on the effects of 16.2 that this condition is necessary to guard against cases where $result is not a hashref.
-			my @keys	= keys %$result;
 			if (scalar(@keys) == 1 and $keys[0] eq '@language') {
 				println "17" if $debug;
 				$result	= undef; # 17
@@ -1176,11 +1183,16 @@ Returns the JSON-LD expansion of C<< $data >>.
 					}
 				}
 			}
-			println "17 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+			println "18 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+		}
+		
+		if (ref($result) eq 'HASH' and scalar(@keys) == 1 and $keys[0] eq '@graph') {
+			println "19";
+			$result	= $result->{'@graph'};
 		}
 		
 		local($Data::Dumper::Indent)	= 1;
-		println "19 returning from _5_1_2_expansion with final value " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+		println "22 returning from _5_1_2_expansion with final value " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 		return $result; # 19
 	}
 	
@@ -1289,7 +1301,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 
 				if ($expandedProperty eq '@graph') {
 					println "13.4.5" if $debug;
-					my $v	= $self->_expand($activeCtx, '@graph', $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.5
+					my $v	= $self->_5_1_2_expansion($activeCtx, '@graph', $value, frameExpansion => $frameExpansion, ordered => $ordered);
 					# TODO: ensure that expanded value is an array of one or more maps
 					$expandedValue	= $v;
 					println "13.4.5 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
@@ -1303,7 +1315,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 					}
 					
 					println "13.4.6.2" if $debug;
-					$expandedValue	= $self->_expand($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered);
+					$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered);
 					unless (ref($expandedValue) eq 'ARRAY') {
 						$expandedValue	= [$expandedValue];
 					}
@@ -1494,7 +1506,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 					my %other_framings	= map { $_ => 1 } qw(@explicit @default @embed @explicit @omitDefault @requireAll);
 					if ($other_framings{$expandedProperty}) {
 						println "13.4.15" if $debug;
-						$expandedValue	= $self->_expand($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.15
+						$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.15
 						println "13.4.15 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 					}
 				}
@@ -1702,13 +1714,16 @@ Returns the JSON-LD expansion of C<< $data >>.
 				}
 				my @values;
 				foreach my $ev (@$expandedValue) {
-					if (ref($ev) eq 'HASH' and exists $ev->{'@graph'}) {
-						push(@values, $ev);
-					} else {
+					println "is a graph object? " . Data::Dumper->Dump([$ev], ['*ev']) if $debug;
+					if (not $self->_is_graph_object($ev)) {
+						println "no" if $debug;
 						# 13.12.1
 						println "13.12.1" if $debug;
 						my $av	= (ref($ev) eq 'ARRAY') ? $ev : [$ev];
 						push(@values, {'@graph' => $av});
+					} else {
+						println "yes" if $debug;
+						push(@values, $ev);
 					}
 				}
 				$expandedValue	= \@values;
