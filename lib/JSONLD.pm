@@ -94,20 +94,6 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my $prop	= shift;
 		my $d		= shift;
 		my $v	= $self->_5_1_2_expansion($ctx, $prop, $d, @_);
-		if (ref($v) eq 'HASH') {
-			my @keys	= keys %$v;
-			if (scalar(@keys) == 1 and $keys[0] eq '@graph') {
-				$v	= $v->{'@graph'};
-			}
-		}
-		unless (defined($v)) {
-			$v	= [];
-		}
-		
-		if (ref($v) ne 'ARRAY') {
-			$v	= [$v];
-		}
-		
 		return $v;
 	}
 	
@@ -1155,32 +1141,50 @@ Returns the JSON-LD expansion of C<< $data >>.
 		}
 		
 		println "after 16 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
-		if (ref($result) eq 'HASH') { # NOTE: assuming based on the effects of 16.2 that this condition is necessary to guard against cases where $result is not a hashref.
-			my @keys	= keys %$result;
-			if (scalar(@keys) == 1 and $keys[0] eq '@language') {
-				println "17" if $debug;
-				$result	= undef; # 17
-			}
-			if (not(defined($activeProp)) or $activeProp eq '@graph') {
-				# 18
-				local($Data::Dumper::Indent)	= 0;
+		my @keys	= (ref($result) eq 'HASH') ? keys %$result : ();
+		if (ref($result) eq 'HASH' and scalar(@keys) == 1 and $keys[0] eq '@language') {
+			println "17" if $debug;
+			$result	= undef; # 17
+			return $result;
+		}
+		
+		if (not(defined($activeProp)) or $activeProp eq '@graph') {
+			# 18
+			local($Data::Dumper::Indent)	= 0;
+			if (ref($result) eq 'HASH') {
 				println "18 " . Data::Dumper->Dump([$result], ['*result']) if $debug;
-				if (scalar(@keys) == 0 or exists $result->{'@value'} or exists $result->{'@list'}) {
+				if (ref($result) eq 'HASH' and scalar(@keys) == 0 or exists $result->{'@value'} or exists $result->{'@list'}) {
 					println "18.1" if $debug;
 					$result	= undef; # 18.1
-				} elsif (scalar(@keys) == 1 and $keys[0] eq '@id') {
-				
+				} elsif (ref($result) eq 'HASH' and scalar(@keys) == 1 and $keys[0] eq '@id') {
 					unless ($frameExpansion) {
 						println "18.2" if $debug;
 						$result	= undef; # 18.2
 					}
 				}
 			}
-			println "17 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+			println "18 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+		}
+		
+		if (ref($result) eq 'HASH') {
+			if (scalar(@keys) == 1 and $keys[0] eq '@graph') {
+				println "19" if $debug;
+				$result	= $result->{'@graph'};
+			}
+		}
+		
+		unless (defined($result)) {
+			println "20" if $debug;
+			$result	= [];
+		}
+		
+		if (ref($result) ne 'ARRAY') {
+			println "21" if $debug;
+			$result	= [$result];
 		}
 		
 		local($Data::Dumper::Indent)	= 1;
-		println "19 returning from _5_1_2_expansion with final value " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+		println "22 returning from _5_1_2_expansion with final value " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 		return $result; # 19
 	}
 	
