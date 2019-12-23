@@ -1094,7 +1094,6 @@ Returns the JSON-LD expansion of C<< $data >>.
 		println "12 " . Data::Dumper->Dump([$input_type], ['*input_type']) if $debug;
 		
 		$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
-		$self->_5_1_2_expansion_step_13_15($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
 
 		if (exists $result->{'@value'}) {
 			# 14
@@ -1768,6 +1767,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 				println "13.14 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 			}
 		}
+		$self->_5_1_2_expansion_step_13_15($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
 	}
 
 	sub _5_1_2_expansion_step_13_15 {
