@@ -1144,8 +1144,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my @keys	= (ref($result) eq 'HASH') ? keys %$result : ();
 		if (ref($result) eq 'HASH' and scalar(@keys) == 1 and $keys[0] eq '@language') {
 			println "17" if $debug;
-			$result	= undef; # 17
-			return $result;
+			return undef;
 		}
 		
 		if (not(defined($activeProp)) or $activeProp eq '@graph') {
