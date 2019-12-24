@@ -59,6 +59,9 @@ package JSONLD {
 	has 'processing_mode' => (is => 'ro', default => 'json-ld-1.1');
 	has 'max_remote_contexts' => (is => 'rw', default => 10);
 	has 'parsed_remote_contexts' => (is => 'rw', default => sub { +{} });
+	has 'rdf_direction' => (is => 'rw');
+	has 'identifier_map' => (is => 'rw', default => sub { +{} });
+	has 'next_identifier_id' => (is => 'rw', default => 0);
 	
 	our $debug		= 0;
 	my %keywords	= map { $_ => 1 } qw(: @base @container @context @direction @graph @id @import @included @index @json @language @list @nest @none @prefix @propagate @protected @reverse @set @type @value @version @vocab);
@@ -676,7 +679,6 @@ Returns the JSON-LD expansion of C<< $data >>.
 			# 16
 			println "16" if $debug;
 			my $id	= $value->{'@id'};
-# 			warn Dumper($id);
 			if (exists $value->{'@id'} and not(defined($id))) {
 				println "16.1" if $debug;
 				# 16.1
@@ -772,7 +774,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 				} elsif (any { $_ eq '@set' } @$container and any { $_ =~ /^[@](index|graph|id|type|language)$/ } @$container) {
 					
 				} else {
-					warn Dumper($container);
+					warn Dumper($container) if $debug;
 					println "21.1(b)" if $debug;
 					die 'invalid container mapping';
 				}
@@ -1511,6 +1513,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 					}
 				}
 				
+				println(Data::Dumper->Dump([$expandedValue, $expandedProperty, $input_type], [qw'expandedValue expandedProperty input_type'])) if $debug;
 				unless (not(defined($expandedValue)) and $expandedProperty eq '@value' and $input_type eq '@json') {
 					println "13.4.16 setting " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 # 						println "$expandedProperty expanded value is " . Dumper($expandedValue) if $debug;
@@ -1996,7 +1999,504 @@ Returns the JSON-LD expansion of C<< $data >>.
 		println "6 returning from _5_3_2_value_expand with final result" if $debug;
 		return $result; # 6
 	}
+
+	sub to_rdf {
+		my $self	= shift;
+		my $obj		= shift;
+		my $expandedInput	= $self->expand($obj);
+		println "to rdf " . Data::Dumper->Dump([$expandedInput], ['expandedInput']) if $debug;
+		my $dataset	= $self->new_dataset;
+		my $map		= {};
+		$self->identifier_map({});
+		$self->next_identifier_id(0);
+		$self->_7_2_2_nodemap_generation($expandedInput, $map);
+		println(Data::Dumper->Dump([$map], ['node_map'])) if $debug;
+
+		$self->_8_1_2_to_rdf($map, $dataset);
+		return $dataset;
+	}
+	
+	sub _is_well_formed {
+		my $self	= shift;
+		my $value	= shift;
+		println "TODO: _is_well_formed: $value";
+		return 1;
+	}
+
+	sub _7_1_2_flattening {
+		my $self			= shift;
+		my $element			= shift;
+		my $context			= shift;
+		my $ordered			= shift // 0;
+		die;
+	}	
+
+	sub _7_2_2_nodemap_generation {
+		println "ENTER    =================> _7_2_2_nodemap_generation" if $debug;
+		my $__indent	= indent();
+		my $self			= shift;
+		my $element			= shift;
+		my $map				= shift;
+		my $activeGraph		= shift // '@default';
+		my $activeSubject	= shift;
+		my $activeProp		= shift;
+		my $list			= shift;
+# 		println(Data::Dumper->Dump([$activeGraph, $activeSubject, $activeProp], [qw(activeGraph activeSubject activeProp)]));
+		
+		println "1" if $debug;
+		if (ref($element) eq 'ARRAY') {
+			foreach my $item (@$element) {
+				$self->_7_2_2_nodemap_generation($item, $map, $activeGraph, $activeSubject, $activeProp, $list);
+			}
+			return;
+		}
+		
+		println "2" if $debug;
+		my $graph	= ($map->{$activeGraph} ||= {});
+		my $node;
+		my $subjectNode;
+		if (not defined($activeSubject)) {
+			$node	= undef;
+		} else {
+			$subjectNode	= $graph->{$activeSubject};
+		}
+		
+		if (exists $element->{'@type'}) {
+			println "3" if $debug;
+			# https://github.com/w3c/json-ld-api/issues/276
+			foreach my $i (0 .. $#{ $element->{'@type'} }) {
+				my $item	= $element->{'@type'}[$i];
+				if ($item =~ /^_:/) {
+					println "3.1" if $debug;
+					$element->{'@type'}[$i]	= $self->_7_4_2_generate_blank_node_ident($item);
+				}
+			}
+		}
+		
+		my $j	= JSON->new()->canonical(1);
+		if (exists $element->{'@value'}) {
+			println "4" if $debug;
+			if (not defined($list)) {
+				println "4.1" if $debug;
+				no warnings 'uninitialized';
+				if (not exists $subjectNode->{$activeProp}) {
+					println "4.1.1" if $debug;
+					$subjectNode->{$activeProp}	= [$element];
+				} else {
+					println "4.1.2" if $debug;
+					my $je	= $j->encode($element);
+					my $exists	= any { $j->encode($_) eq $je } @{ $subjectNode->{$activeProp} };
+					unless ($exists) {
+						push(@{ $subjectNode->{$activeProp} }, $element);
+					}
+				}
+			}
+		} elsif (exists $element->{'@list'}) {
+			println "5" if $debug;
+			println "5.1" if $debug;
+			my $result	= {'@list' => []};
+			
+			println "5.2" if $debug;
+			$self->_7_2_2_nodemap_generation($element->{'@list'}, $map, $activeGraph, $activeSubject, $activeProp, $list);
+			
+			if (not defined($list)) {
+				println "5.3" if $debug;
+				push(@{ $subjectNode->{$activeProp} }, $result);
+			} else {
+				println "5.4" if $debug;
+				push(@{ $list->{'@list'} }, $result);
+			}
+		} else {
+			println "6" if $debug;
+			my $id;
+			if (exists $element->{'@id'}) {
+				println "6.1" if $debug;
+				$id	= delete $element->{'@id'};
+				if ($id =~ /^_:/) {
+					$id	= $self->_7_4_2_generate_blank_node_ident($id);
+				}
+			} else {
+				println "6.2" if $debug;
+				$id	= $self->_7_4_2_generate_blank_node_ident();
+			}
+			
+			unless (exists $graph->{$id}) {
+				println "6.3" if $debug;
+				$graph->{$id}	= { '@id' => $id };
+			}
+			
+			println "6.4" if $debug;
+			$node	= $graph->{$id};
+			
+			if (ref($activeSubject) eq 'HASH') {
+				println "6.5" if $debug;
+				if (not exists $node->{$activeProp}) {
+					println "6.5.1" if $debug;
+					$node->{$activeProp}	= [$activeSubject];
+				} else {
+					println "6.5.2" if $debug;
+					my $je	= $j->encode($activeSubject);
+					my $exists	= any { $j->encode($_) eq $je } @{ $node->{$activeProp} };
+					unless ($exists) {
+						push(@{ $node->{$activeProp} }, $activeSubject);
+					}
+				}
+			} elsif (defined($activeProp)) {
+				println "6.6" if $debug;
+				println "6.6.1" if $debug;
+				my $reference	= { '@id' => $id };
+				
+				if (not defined($list)) {
+					println "6.6.2" if $debug;
+					if (not exists $subjectNode->{$activeProp}) {
+						println "6.6.2.1" if $debug;
+						$subjectNode->{$activeProp}	= [$reference];
+					} else {
+						println "6.6.2.2" if $debug;
+						my $je	= $j->encode($reference);
+						my $exists	= any { $j->encode($_) eq $je } @{ $subjectNode->{$activeProp} };
+						unless ($exists) {
+							push(@{ $subjectNode->{$activeProp} }, $reference);
+						}
+					}
+				}
+			}
+			
+			if (exists $element->{'@type'}) {
+				println "6.7" if $debug;
+				my %exists	= map { $_ => 1 } @{ $element->{'@type'} };
+				push(@{ $node->{'@type'} }, grep { not exists $exists{$_} }@{ $element->{'@type'} });
+			}
+			
+			if (exists $element->{'@index'}) {
+				println "6.8" if $debug;
+				println "6.8 TODO check if element has a pre-existing value";
+				$node->{'@index'}	= delete $element->{'@index'};
+			}
+
+			if (exists $element->{'@reverse'}) {
+				println "6.9" if $debug;
+				println "6.9.1" if $debug;
+				my $referenced_node	= { '@id' => $id };
+				
+				println "6.9.2" if $debug;
+				my $reverse_map	= $element->{'@reverse'};
+				
+				println "6.9.3" if $debug;
+				foreach my $property (keys %$reverse_map) {
+					println "6.9.3 [$property]" if $debug;
+					my $values	= $reverse_map->{$property};
+					
+					println "6.9.3.1" if $debug;
+					foreach my $value (@$values) {
+						println "6.9.3.1.1" if $debug;
+						$self->_7_2_2_nodemap_generation($value, $map, $activeGraph, $referenced_node, $property); # TODO: need to pass $list ?
+					}
+				}
+
+				println "6.9.3.4" if $debug;
+				delete $element->{'@reverse'};
+			}
+						
+			if (exists $element->{'@graph'}) {
+				println "6.10" if $debug;
+				$self->_7_2_2_nodemap_generation($element->{'@graph'}, $map, $id);
+				delete $element->{'@graph'};
+			}
+						
+			if (exists $element->{'@included'}) {
+				println "6.11" if $debug;
+				$self->_7_2_2_nodemap_generation($element->{'@included'}, $map, $id);
+				delete $element->{'@included'};
+			}
+
+			println "6.12" if $debug;
+			foreach my $property (sort keys %$element) {
+				println '----------------' if $debug;
+				println "6.12 [$property]" if $debug;
+				my $value	= $element->{$property};
+				if ($property =~ /^_:/) {
+					println "6.12.1" if $debug;
+					$property	= $self->_7_4_2_generate_blank_node_ident($property);
+				}
+				unless (exists $node->{$property}) {
+					println "6.12.2" if $debug;
+					$node->{$property}	= [];
+				}
+				
+				println "6.12.3" if $debug;
+				$self->_7_2_2_nodemap_generation($value, $map, $activeGraph, $id, $property);
+			}
+		}
+	}
+
+	sub _7_4_2_generate_blank_node_ident {
+		println "ENTER    =================> _7_4_2_generate_blank_node_ident" if $debug;
+		my $__indent	= indent();
+		my $self	= shift;
+		my $ident	= shift;
+		if (defined($ident) and exists $self->identifier_map->{$ident}) {
+			println "1" if $debug;
+			return $self->identifier_map->{$ident};
+		}
+		
+		println "2" if $debug;
+		my $nid	= $self->next_identifier_id;
+		$self->next_identifier_id($nid + 1);
+		my $bid	= "_:b$nid";
+
+		if (defined($ident)) {
+			println "3" if $debug;
+			$self->identifier_map->{$ident}	= $bid;
+		}
+		
+		println "4" if $debug;
+		return $bid;
+	}
+
+	sub _8_1_2_to_rdf {
+		println "ENTER    =================> _8_1_2_to_rdf" if $debug;
+		my $__indent	= indent();
+		my $self	= shift;
+		my $map		= shift;
+		my $dataset	= shift;
+		my %args	= @_;
+		my $produce_genrdf	= $args{'produceGeneralizedRdf'} || 0;
+		my $rdfDirection	= $args{'rdfDirection'};
+		
+		println "1" if $debug;
+		for my $graphName (keys %$map) {
+			my $__indent	= indent();
+			println '----------------------' if $debug;
+			println "1 [$graphName]" if $debug;
+			my $graph	= $map->{$graphName};
+
+			unless ($self->_is_well_formed($graphName)) {
+				println "1.1" if $debug;
+				next;
+			}
+			
+			my $graph_iri;
+			println "1.2" if $debug;
+			if ($graphName eq '@default') {
+				$graph_iri	= $self->default_graph();
+			} else {
+				$graph_iri	= $self->new_iri($graphName);
+			}
+			
+			println "1.3" if $debug;
+			foreach my $subject (sort keys %$graph) {
+				my $__indent	= indent();
+				println '----------------------' if $debug;
+				println "1.3 [$subject]" if $debug;
+				my $node	= $graph->{$subject};
+
+				println "1.3.2" if $debug;
+				foreach my $property (sort keys %$node) {
+					println "1.3.2 [$property]" if $debug;
+					my $values	= $node->{$property};
+					println(Dumper($property, $node));
+					if ($property eq '@type') {
+						println "1.3.2.1" if $debug;
+						foreach my $type (@$values) {
+							if ($self->_is_abs_iri($type)) {
+								my $q	= $self->new_quad(
+									$subject,
+									$self->new_iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'),
+									$type,
+									$graph_iri
+								);
+								$self->add_quad($q, $dataset);
+							}
+						}
+					} elsif (exists $keywords{$property}) {
+						println "1.3.2.2" if $debug;
+						next;
+					} elsif ($property =~ /^_:(.*)$/ and not $produce_genrdf) {
+						println "1.3.2.3" if $debug;
+						next;
+					} elsif (not $self->_is_well_formed($property)) {
+						println "1.3.2.4" if $debug;
+						next;
+					} else {
+						println "1.3.2.5" if $debug;
+						foreach my $item (@$values) {
+							println "1.3.2.5.1" if $debug;
+							println "1.3.2.5.2" if $debug;
+							my $list_triples	= [];
+							my $s	= $self->_8_2_2_object_to_rdf({'@id' => $subject}, $list_triples);
+							my $o	= $self->_8_2_2_object_to_rdf($item, $list_triples);
+							if ($o) {
+								println "1.3.2.5.3" if $debug;
+								my $q	= $self->new_quad(
+									$s,
+									$self->new_iri($property),
+									$o,
+									$graph_iri
+								);
+								$self->add_quad($q, $dataset);
+							}
+							println "1.3.2.5.4" if $debug;
+							foreach my $q (@$list_triples) {
+								$self->add_quad($q, $dataset);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	sub _8_2_2_object_to_rdf {
+		println "ENTER    =================> _8_2_2_object_to_rdf" if $debug;
+		my $__indent	= indent();
+		my $self			= shift;
+		my $item			= shift;
+		my $list_triples	= shift;
+		if ($self->_is_node_object($item) and not $self->_is_well_formed($item->{'@id'})) {
+			println "1" if $debug;
+			return;
+		}
+
+		if ($self->_is_node_object($item)) {
+			my $value	= $item->{'@id'};
+			println "2 $value" if $debug;
+			if ($value =~ /^_:(.*)$/) {
+				return $self->new_blank($1);
+			} else {
+				return $self->new_iri($value);
+			}
+		}
+		
+		if ($self->_is_list_object($item)) {
+			println "3" if $debug;
+			return $self->_8_3_2_list_conversion($item->{'@list'}, $list_triples);
+		}
+		
+		println "4" if $debug;
+		my $value	= $item->{'@value'};
+		
+		println "5" if $debug;
+		my $datatype	= $item->{'@type'};
+
+		unless ($self->_is_well_formed($datatype)) {
+			println "6" if $debug;
+			return;
+		}
+		
+		if (exists $item->{'@language'} and not $self->_is_well_formed($item->{'@language'})) {
+			println "7" if $debug;
+			return;
+		}
+		
+		if (defined($datatype) and $datatype eq '@json') {
+			println "8" if $debug;
+			$value		= encode_json($value);
+			$datatype	= 'http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON';
+		}
+		
+		println "9 TODO bool? " . Data::Dumper->Dump([$value], ['value']) if $debug;
+		println "10/11 TODO numeric? " . Data::Dumper->Dump([$value], ['value']) if $debug;
+		
+		if (not defined($datatype)) {
+			println "12" if $debug;
+			$datatype	= (exists $item->{'@language'}) ? 'http://www.w3.org/1999/02/22-rdf-syntax-ns#langString' : 'http://www.w3.org/2001/XMLSchema#string';
+		}
+		
+		my $literal;
+		if (exists $item->{'@direction'} and defined(my $dir = $self->rdf_direction)) {
+			println "13" if $debug;
+			if ($dir eq 'i18n-datatype') {
+				println "13.1" if $debug;
+				my $language	= $item->{'@language'} // ''; # https://github.com/w3c/json-ld-api/issues/277
+				$datatype	= join('_', 'https://www.w3.org/ns/i18n#', $language, $item->{'@direction'});
+				$literal	= $self->new_dt_literal($value, $datatype);
+			} elsif ($dir eq 'compound-literal') {
+				println "13.2" if $debug;
+				println "13.2.1" if $debug;
+				$literal	= $self->new_blank();
+				println "13.2.2" if $debug;
+				my $t	= $self->new_triple(
+					$literal,
+					$self->new_iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#value'),
+					$item->{'@value'} # TODO: should this be a term constructor call?
+				);
+				push(@$list_triples, $t);
+				
+				if (exists $item->{'@language'}) {
+					println "13.2.3" if $debug;
+					my $t	= $self->new_triple(
+						$literal,
+						$self->new_iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#language'),
+						$item->{'@language'} # TODO: should this be a term constructor call?
+					);
+					push(@$list_triples, $t);
+				}
+				
+				println "13.2.4" if $debug;
+				my $t2	= $self->new_triple(
+					$literal,
+					$self->new_iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#direction'),
+					$item->{'@direction'} # TODO: should this be a term constructor call?
+				);
+				push(@$list_triples, $t2);
+			}
+		} else {
+			println "14" if $debug;
+			$literal	= (exists $item->{'@language'}) ? $self->new_lang_literal($value, $item->{'@language'}) : $self->new_dt_literal($value, $datatype);
+		}
+		
+		println "15" if $debug;
+		return $literal;
+	}
+
+	sub _8_3_2_list_conversion {
+		println "ENTER    =================> _8_3_2_list_conversion" if $debug;
+		my $__indent	= indent();
+		die 'TODO';
+	}
+	
+	sub default_graph {
+		my $self	= shift;
+		Carp::cluck 'RDF default graph accessor must be overloaded in a JSONLD subclass';
+	}
+	
+	sub new_dataset {
+		my $self	= shift;
+		Carp::cluck 'RDF dataset constructors must be overloaded in a JSONLD subclass';
+	}
+	
+	sub new_triple {
+		my $self	= shift;
+		Carp::cluck 'RDF statement constructors must be overloaded in a JSONLD subclass';
+	}
+	
+	sub new_quad {
+		my $self	= shift;
+		Carp::cluck 'RDF statement constructors must be overloaded in a JSONLD subclass';
+	}
+	
+	sub new_iri {
+		my $self	= shift;
+		Carp::cluck 'RDF term constructors must be overloaded in a JSONLD subclass';
+	}
+	
+	sub new_blank {
+		my $self	= shift;
+		Carp::cluck 'RDF term constructors must be overloaded in a JSONLD subclass';
+	}
+	
+	sub new_lang_literal {
+		my $self	= shift;
+		Carp::cluck 'RDF term constructors must be overloaded in a JSONLD subclass';
+	}
+	
+	sub new_dt_literal {
+		my $self	= shift;
+		Carp::cluck 'RDF term constructors must be overloaded in a JSONLD subclass';
+	}
 }
+
 
 
 1;
