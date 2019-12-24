@@ -2226,6 +2226,7 @@ RDF-related methods:
 				println "6.7" if $debug;
 				my %exists	= map { $_ => 1 } @{ $element->{'@type'} };
 				push(@{ $node->{'@type'} }, grep { not exists $exists{$_} }@{ $element->{'@type'} });
+				delete $element->{'@type'};
 			}
 			
 			if (exists $element->{'@index'}) {
