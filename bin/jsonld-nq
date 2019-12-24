@@ -47,6 +47,15 @@ package MyJSONLD {
 		return quad(@_);
 	}
 	
+	sub new_graphname {
+		my $self	= shift;
+		my $value	= shift;
+		if ($value =~ /^_:(.+)$/) {
+			$value	= 'tag:gwilliams@cpan.org,2019-12:JSONLD:skolem:' . $1;
+		}
+		return $self->new_iri($value);
+	}
+
 	sub new_iri {
 		my $self	= shift;
 		return iri(shift);

@@ -19,7 +19,7 @@ our $debug	= 0;
 $JSONLD::debug	= $debug;
 our $PATTERN;
 if ($debug) {
-	$PATTERN = qr/t0001/;
+	$PATTERN = qr/t0114/;
 # 	$PATTERN = qr/gtw/;
 } else {
 	$PATTERN	= qr/./;
@@ -65,6 +65,19 @@ package MyJSONLD {
 		return quad(@_);
 	}
 	
+	sub skolem_prefix {
+		my $self	= shift;
+		return 'tag:gwilliams@cpan.org,2019-12:JSONLD:skolem:';
+	}
+	sub new_graphname {
+		my $self	= shift;
+		my $value	= shift;
+		if ($value =~ /^_:(.+)$/) {
+			$value	= $self->skolem_prefix() . $1;
+		}
+		return $self->new_iri($value);
+	}
+
 	sub new_iri {
 		my $self	= shift;
 		return iri(shift);
@@ -95,7 +108,11 @@ sub load_nq {
 	open(my $fh, '<', $file);
 	my $parser	= Attean->get_parser('nquads')->new();
 	my $iter	= $parser->parse_iter_from_io($fh);
-	return $iter->materialize;
+	my $miter	= $iter->materialize;
+	foreach my $st ($miter->elements) {
+		say $st->as_string;
+	}
+	return $miter;
 }
 
 sub load_json {
@@ -106,7 +123,6 @@ sub load_json {
 	return $j->decode(do { local($/); <$fh> });
 }
 
-$Data::Dumper::Sortkeys	= 1;
 my $path	= File::Spec->catfile( $Bin, 'data', 'json-ld-api-w3c' );
 my $manifest	= File::Spec->catfile($path, 'toRdf-manifest.jsonld');
 my $d		= load_json($manifest);
@@ -145,7 +161,8 @@ foreach my $t (@$tests) {
 		my $expected	= load_nq($outfile);
 		if ($debug) {
 			warn "Input file: $infile\n";
-			warn "INPUT:\n===============\n" . JSON->new->pretty->encode($data); # Dumper($data);
+			warn "Output file: $outfile\n";
+			warn "INPUT:\n===============\n" . JSON->new->pretty->encode($data);
 		}
 		my $default_graph	= $jld->default_graph();
 		my $got		= eval {
@@ -153,8 +170,15 @@ foreach my $t (@$tests) {
 			my $iter	= Attean::CodeIterator->new(generator => sub {
 				my $q	= $qiter->next;
 				return unless ($q);
-				if ($q->graph->equals($default_graph)) {
+				my $g		= $q->graph;
+				my $prefix	= $jld->skolem_prefix();
+				if ($g->equals($default_graph)) {
 					return $q->as_triple;
+				} elsif (substr($g->value, 0, length($prefix)) eq $prefix) {
+					my $gb		= $jld->new_blank(substr($g->value, length($prefix)));
+					my @terms	= $q->values;
+					$terms[3]	= $gb;
+					return $jld->new_quad(@terms);
 				} else {
 					return $q;
 				}
@@ -176,6 +200,7 @@ foreach my $t (@$tests) {
 				my $ser	= Attean->get_serializer('nquads')->new();
 				foreach my $d (@data) {
 					my ($name, $data)	= @$d;
+					$data->reset;
 					warn "=======================\n";
 					my $filename	= "/tmp/json-ld-$$-$name.out";
 					open(my $fh, '>', $filename) or die $!;
