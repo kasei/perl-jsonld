@@ -11,6 +11,14 @@ my $data;
 my $base;
 my $j		= JSON->new->pretty(1)->canonical(1)->allow_nonref(1);
 $j->boolean_values(0, 1);
+while (scalar(@ARGV) and $ARGV[0] =~ /^-(\w+)$/) {
+	my $flag	= $1;
+	shift;
+	if ($flag eq 'v') {
+		$JSONLD::debug	= 1;
+	}
+}
+
 if (scalar(@ARGV)) {
 	my $file	= shift;
 	open(my $fh, '<', $file);
@@ -21,7 +29,6 @@ if (scalar(@ARGV)) {
 	$base	= 'http://base.example.org/';
 }
 
-$j->boolean_values(0, 1);
 my $jld			= JSONLD->new(base_iri => IRI->new($base));
 my $expanded	= eval { $jld->expand($data) };
 if ($@) {
