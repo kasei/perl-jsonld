@@ -12,6 +12,7 @@ license			'perl';
 test_requires	'Test::More'				=> 0.88;
 test_requires	'Test::Exception'			=> 0;
 test_requires	'Test::Modern'				=> 0.012;
+test_requires	'Attean'					=> 0;
 
 perl_version	'5.014';
 
