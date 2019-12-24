@@ -97,20 +97,6 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my $prop	= shift;
 		my $d		= shift;
 		my $v	= $self->_5_1_2_expansion($ctx, $prop, $d, @_);
-		if (ref($v) eq 'HASH') {
-			my @keys	= keys %$v;
-			if (scalar(@keys) == 1 and $keys[0] eq '@graph') {
-				$v	= $v->{'@graph'};
-			}
-		}
-		unless (defined($v)) {
-			$v	= [];
-		}
-		
-		if (ref($v) ne 'ARRAY') {
-			$v	= [$v];
-		}
-		
 		return $v;
 	}
 	
@@ -609,13 +595,13 @@ Returns the JSON-LD expansion of C<< $data >>.
 			$type	= $self->_5_2_2_iri_expansion($activeCtx, $type, vocab => 1, localCtx => $localCtx, 'defined' => $defined); # 13.2
 			println(Data::Dumper->Dump([$type], ['type'])) if $debug;
 
-			if (($type eq '@json' or $type eq '@none')) {
+			if (($type eq '@json' or $type eq '@none') and $self->processing_mode eq 'json-ld-1.0') {
 				# https://github.com/w3c/json-ld-api/issues/259
 				println "13.3 " . Data::Dumper->Dump([$type], ['*type']) if $debug;
-				if ($self->processing_mode eq 'json-ld-1.0') {
-					die 'invalid type mapping';
-				}
-			} elsif ($type ne '@id' and $type ne '@vocab' and $type ne '@json' and not($self->_is_abs_iri($type))) {
+				die 'invalid type mapping';
+			}
+			
+			if ($type ne '@id' and $type ne '@vocab' and $type ne '@none' and $type ne '@json' and not($self->_is_abs_iri($type))) {
 				# TODO: handle case "nor, if processing mode is json-ld-1.1, @json nor @none"
 				println "13.4 " . Data::Dumper->Dump([$type], ['*type']) if $debug;
 				die 'invalid type mapping'; # 13.4
@@ -1168,17 +1154,16 @@ Returns the JSON-LD expansion of C<< $data >>.
 		if (ref($result) eq 'HASH') { # NOTE: assuming based on the effects of 16.2 that this condition is necessary to guard against cases where $result is not a hashref.
 			if (scalar(@keys) == 1 and $keys[0] eq '@language') {
 				println "17" if $debug;
-				$result	= undef; # 17
+				return undef;
 			}
 			if (not(defined($activeProp)) or $activeProp eq '@graph') {
 				# 18
 				local($Data::Dumper::Indent)	= 0;
 				println "18 " . Data::Dumper->Dump([$result], ['*result']) if $debug;
-				if (scalar(@keys) == 0 or exists $result->{'@value'} or exists $result->{'@list'}) {
+				if (ref($result) eq 'HASH' and scalar(@keys) == 0 or exists $result->{'@value'} or exists $result->{'@list'}) {
 					println "18.1" if $debug;
 					$result	= undef; # 18.1
-				} elsif (scalar(@keys) == 1 and $keys[0] eq '@id') {
-				
+				} elsif (ref($result) eq 'HASH' and scalar(@keys) == 1 and $keys[0] eq '@id') {
 					unless ($frameExpansion) {
 						println "18.2" if $debug;
 						$result	= undef; # 18.2
@@ -1188,9 +1173,21 @@ Returns the JSON-LD expansion of C<< $data >>.
 			println "18 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 		}
 		
-		if (ref($result) eq 'HASH' and scalar(@keys) == 1 and $keys[0] eq '@graph') {
-			println "19";
-			$result	= $result->{'@graph'};
+		if (ref($result) eq 'HASH') {
+			if (scalar(@keys) == 1 and $keys[0] eq '@graph') {
+				println "19" if $debug;
+				$result	= $result->{'@graph'};
+			}
+		}
+		
+		unless (defined($result)) {
+			println "20" if $debug;
+			$result	= [];
+		}
+		
+		if (ref($result) ne 'ARRAY') {
+			println "21" if $debug;
+			$result	= [$result];
 		}
 		
 		local($Data::Dumper::Indent)	= 1;
