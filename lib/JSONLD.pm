@@ -661,14 +661,14 @@ Returns the JSON-LD expansion of C<< $data >>.
 		println "15" if $debug;
 		$definition->{'reverse'}	= 0; # 15
 		
-		if (exists $value->{'@id'} and (not defined($value->{'@id'}) or $value->{'@id'} ne $term)) {
+		if (exists $value->{'@id'} and (defined($value->{'@id'}) and $value->{'@id'} ne $term)) {
 			# 16
 			println "16" if $debug;
 			my $id	= $value->{'@id'};
-			if (exists $value->{'@id'} and not(defined($id))) {
-				println "16.1" if $debug;
-				# 16.1
-			} else { # https://github.com/w3c/json-ld-api/issues/241
+# 			if (exists $value->{'@id'} and not(defined($id))) {
+# 				println "16.1" if $debug;
+# 				# 16.1
+# 			} else { # https://github.com/w3c/json-ld-api/issues/241
 				if (not _is_string($id)) {
 					println "16.2" if $debug;
 					die 'invalid IRI mapping'; # 16.2
@@ -706,7 +706,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 					println "16.6" if $debug;
 					$definition->{'prefix'}	= 1; # 16.6
 				}
-			}
+# 			}
 		} elsif ($term =~ /.:/) {
 			# 17
 			println "17" if $debug;
@@ -740,7 +740,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		
 		if (exists $value->{'@container'}) {
 			# TODO: 21
-			println "21"; # if $debug;
+			println "21" if $debug;
 
 			println "21.1" if $debug;
 			my $container	= $value->{'@container'}; # 21.1
@@ -1511,10 +1511,10 @@ Returns the JSON-LD expansion of C<< $data >>.
 				}
 				
 				println(Data::Dumper->Dump([$expandedValue, $expandedProperty, $input_type], [qw'expandedValue expandedProperty input_type'])) if $debug;
-				unless (not(defined($expandedValue)) and $expandedProperty eq '@value' and $input_type eq '@json') {
+				unless (not(defined($expandedValue)) and $expandedProperty eq '@value' and $input_type ne '@json') {
 					println "13.4.16 setting " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 # 						println "$expandedProperty expanded value is " . Dumper($expandedValue) if $debug;
-					$result->{$expandedProperty}	= $expandedValue // ''; # https://github.com/w3c/json-ld-api/issues/270
+					$result->{$expandedProperty}	= $expandedValue; # https://github.com/w3c/json-ld-api/issues/270
 					println "13.4.16 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 				}
 
@@ -2013,6 +2013,26 @@ Returns the JSON-LD expansion of C<< $data >>.
 		return $dataset;
 	}
 	
+	sub _is_well_formed_language {
+		my $self	= shift;
+		my $value	= shift;
+		my $ok	= ($value =~ m/^[a-zA-Z]{1,8}(-[a-zA-Z0-9]{1,8})*$/);
+		if (not $ok) {
+			println "not a well-formed language: $value\n" if $debug;
+		}
+		return $ok;
+	}
+	
+	sub _is_well_formed_iri {
+		my $self	= shift;
+		my $value	= shift;
+		my $ok	= ($self->_is_abs_iri($value) or ($value eq '@default'));
+		if (not $ok) {
+			println "not a well-formed IRI: $value\n" if $debug;
+		}
+		return $ok;
+	}
+	
 	sub _is_well_formed {
 		my $self	= shift;
 		my $value	= shift;
@@ -2268,7 +2288,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 			println "1 [$graphName]" if $debug;
 			my $graph	= $map->{$graphName};
 
-			unless ($self->_is_well_formed($graphName)) {
+			unless ($self->_is_well_formed_iri($graphName)) {
 				println "1.1" if $debug;
 				next;
 			}
@@ -2292,11 +2312,11 @@ Returns the JSON-LD expansion of C<< $data >>.
 				foreach my $property (sort keys %$node) {
 					println "1.3.2 [$property]" if $debug;
 					my $values	= $node->{$property};
-					println(Dumper($property, $node));
+					println(Dumper($property, $node)) if $debug;
 					if ($property eq '@type') {
 						println "1.3.2.1" if $debug;
 						foreach my $type (@$values) {
-							if ($self->_is_abs_iri($type)) {
+							if ($self->_is_well_formed_iri($type)) {
 								my $q	= $self->new_quad(
 									$subject,
 									$self->new_iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'),
@@ -2312,7 +2332,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 					} elsif ($property =~ /^_:(.*)$/ and not $produce_genrdf) {
 						println "1.3.2.3" if $debug;
 						next;
-					} elsif (not $self->_is_well_formed($property)) {
+					} elsif (not $self->_is_well_formed_iri($property)) {
 						println "1.3.2.4" if $debug;
 						next;
 					} else {
@@ -2350,7 +2370,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my $self			= shift;
 		my $item			= shift;
 		my $list_triples	= shift;
-		if ($self->_is_node_object($item) and not $self->_is_well_formed($item->{'@id'})) {
+		if ($self->_is_node_object($item) and not $self->_is_well_formed_iri($item->{'@id'})) {
 			println "1" if $debug;
 			return;
 		}
@@ -2376,12 +2396,12 @@ Returns the JSON-LD expansion of C<< $data >>.
 		println "5" if $debug;
 		my $datatype	= $item->{'@type'};
 
-		unless ($self->_is_well_formed($datatype)) {
+		if (defined($datatype) and not $self->_is_well_formed_iri($datatype)) { # https://github.com/w3c/json-ld-api/issues/282
 			println "6" if $debug;
 			return;
 		}
 		
-		if (exists $item->{'@language'} and not $self->_is_well_formed($item->{'@language'})) {
+		if (exists $item->{'@language'} and not $self->_is_well_formed_language($item->{'@language'})) {
 			println "7" if $debug;
 			return;
 		}
