@@ -2595,13 +2595,13 @@ __END__
 =head1 BUGS
 
 Please report any bugs or feature requests to through the GitHub web interface
-at L<https://github.com/kasei/jsonld/issues>.
+at L<https://github.com/kasei/perl-jsonld/issues>.
 
 =head1 SEE ALSO
 
 =over 4
 
-L<AtteanX::Parser::JSONLD>
+=item L<AtteanX::Parser::JSONLD>
 
 =item L<https://www.w3.org/TR/json-ld11/>
 
