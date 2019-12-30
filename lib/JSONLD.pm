@@ -1090,109 +1090,112 @@ Returns the JSON-LD expansion of C<< $data >>.
 		println "12 " . Data::Dumper->Dump([$input_type], ['*input_type']) if $debug;
 		
 		$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
+		println "after 13,14: " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 
 		if (exists $result->{'@value'}) {
-			# 14
-			println "14" if $debug;
+			# 15
+			println "15" if $debug;
 			my @keys	= keys %$result;
 			my %acceptable	= map { $_ => 1 } qw(@direction @index @language @type @value);
 			foreach my $k (@keys) {
-				println "14.1 [$k]" if $debug;
-				die 'invalid value object' unless $acceptable{$k}; # 14.1
+				unless ($acceptable{$k}) {
+					println "15.1 [$k]" if $debug;
+					die 'invalid value object' ; # 15.1
+				}
 			}
 			if (exists $result->{'@language'} or exists $result->{'@direction'}) {
-				println "14.1 \@language handling" if $debug;
-				die 'invalid value object' if (exists $result->{'@type'}); # 14.1
+				println "15.1 \@language handling" if $debug;
+				die 'invalid value object' if (exists $result->{'@type'}); # 15.1
 			}
 			
 			if (not(defined($result->{'@value'}))) {
-				println "14.2" if $debug;
-				$result	= undef; # 14.2
+				println "15.2" if $debug;
+				return undef; # TODO: fixes test t0019
 			} elsif (defined($result->{'@type'}) and $result->{'@type'} eq '@json') {
-				# 14.3
-				println "14.3" if $debug;
+				# 15.3
+				println "15.3" if $debug;
 				# TODO: treat $result->{'@value'} as a JSON literal
 			} elsif (ref($result->{'@value'}) and exists $result->{'@language'}) {
-				println "14.4" if $debug;
-				die 'invalid language-tagged value; ' . Dumper($result); # 14.4
+				println "15.4" if $debug;
+				die 'invalid language-tagged value; ' . Dumper($result); # 15.4
 			} elsif (exists $result->{'@type'} and not($self->_is_iri($result->{'@type'}))) {
 				warn "Not an IRI \@type: " . Dumper($result->{'@type'});
-				println "14.5" if $debug;
-				die 'invalid typed value: ' . Dumper($result); # 14.5
+				println "15.5" if $debug;
+				die 'invalid typed value: ' . Dumper($result); # 15.5
 # 			} elsif (exists $result->{'@type'}) {
 # 				my $types	= $result->{'@type'};
 # 				my @types	= (ref($types) eq 'ARRAY') ? @$types : $types;
 # 				foreach my $t (@types) {
 # 					unless ($self->_is_iri($t)) {
 # 						warn "Not an IRI \@type: " . Dumper($result->{'@type'});
-# 						println "14.5" if $debug;
-# 						die 'invalid typed value: ' . Dumper($result); # 14.5
+# 						println "15.5" if $debug;
+# 						die 'invalid typed value: ' . Dumper($result); # 15.5
 # 					}
 # 				}
 			}
-			println "14 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
-		} elsif (exists $result->{'@type'} and ref($result->{'@type'}) ne 'ARRAY') {
-			println "15" if $debug;
-			$result->{'@type'}	= [$result->{'@type'}]; # 15
 			println "15 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
-		} elsif (exists $result->{'@set'} or exists $result->{'@list'}) {
-			# 16
+		} elsif (exists $result->{'@type'} and ref($result->{'@type'}) ne 'ARRAY') {
 			println "16" if $debug;
+			$result->{'@type'}	= [$result->{'@type'}]; # 16
+			println "16 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+		} elsif (exists $result->{'@set'} or exists $result->{'@list'}) {
+			# 17
+			println "17" if $debug;
 			my @keys	= grep { $_ ne '@set' and $_ ne '@list' } keys %$result;
 			if (scalar(@keys)) {
-				println "16.1" if $debug;
-				die 'invalid set or list object' unless (scalar(@keys) == 1 and $keys[0] eq '@index'); # 16.1
+				println "17.1" if $debug;
+				die 'invalid set or list object' unless (scalar(@keys) == 1 and $keys[0] eq '@index'); # 17.1
 			}
 			if (exists $result->{'@set'}) {
-				println "16.2" if $debug;
-				$result	= $result->{'@set'}; # 16.2
+				println "17.2" if $debug;
+				$result	= $result->{'@set'}; # 17.2
 			}
-			println "16 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+			println "17 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 		}
 		
-		println "after 16 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+		println "after 17 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 		my @keys	= (ref($result) eq 'HASH') ? keys %$result : ();
 		if (ref($result) eq 'HASH') { # NOTE: assuming based on the effects of 16.2 that this condition is necessary to guard against cases where $result is not a hashref.
 			if (scalar(@keys) == 1 and $keys[0] eq '@language') {
-				println "17" if $debug;
+				println "18" if $debug;
 				return undef;
 			}
 			if (not(defined($activeProp)) or $activeProp eq '@graph') {
-				# 18
+				# 19
 				local($Data::Dumper::Indent)	= 0;
-				println "18 " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+				println "19 " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 				if (ref($result) eq 'HASH' and scalar(@keys) == 0 or exists $result->{'@value'} or exists $result->{'@list'}) {
-					println "18.1" if $debug;
-					$result	= undef; # 18.1
+					println "19.1" if $debug;
+					$result	= undef; # 19.1
 				} elsif (ref($result) eq 'HASH' and scalar(@keys) == 1 and $keys[0] eq '@id') {
 					unless ($frameExpansion) {
-						println "18.2" if $debug;
-						$result	= undef; # 18.2
+						println "19.2" if $debug;
+						$result	= undef; # 19.2
 					}
 				}
 			}
-			println "18 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+			println "19 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 		}
 		
 		if (ref($result) eq 'HASH') {
 			if (scalar(@keys) == 1 and $keys[0] eq '@graph') {
-				println "19" if $debug;
+				println "20" if $debug;
 				$result	= $result->{'@graph'};
 			}
 		}
 		
 		unless (defined($result)) {
-			println "20" if $debug;
+			println "21" if $debug;
 			$result	= [];
 		}
 		
 		if (ref($result) ne 'ARRAY') {
-			println "21" if $debug;
+			println "22" if $debug;
 			$result	= [$result];
 		}
 		
 		local($Data::Dumper::Indent)	= 1;
-		println "22 returning from _5_1_2_expansion with final value " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+		println "23 returning from _5_1_2_expansion with final value " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 		return $result; # 19
 	}
 	
@@ -1651,12 +1654,21 @@ Returns the JSON-LD expansion of C<< $data >>.
 						}
 
 						if ($self->_cm_contains($container_mapping, '@index') and $index_key ne '@index' and not exists $item->{'@index'} and $expanded_index ne '@none') {
-							println "13.8.3.7.2" if $debug;
-							my $index_property_values	= $expanded_index;
-							if (exists $item->{$index_key}) {
-								$index_property_values	.= $item->{$index_key};
+							println "13.8.3.7.2 " . Data::Dumper->Dump([$index_key], ['index_key']) if $debug;
+							my $expanded_index_key	= $self->_5_2_2_iri_expansion($activeCtx, $index_key, vocab => 1);
+							warn "activeProp: $activeProp\n";
+							my $index_property_values	= [$self->_5_3_2_value_expand($activeCtx, $index_key, $index)]; # https://github.com/w3c/json-ld-api/issues/290
+							if (exists $item->{$expanded_index_key}) {
+								my $v	= $item->{$expanded_index_key};
+								if (ref($v) eq 'ARRAY') {
+									push(@{$index_property_values}, @$v);
+								} else {
+									push(@{$index_property_values}, $v);
+								}
 							}
-							$item->{$expanded_index}	= $index_property_values;
+							warn Data::Dumper->Dump([$index, $expanded_index, $index_property_values], [qw(index expanded_index index_property_values)]);
+							$item->{$expanded_index_key}	= $index_property_values; # https://github.com/w3c/json-ld-api/issues/290
+
 							if ($self->_is_value_object($item)) {
 								my @keys	= sort keys %$item;
 								if (scalar(@keys) != 2) {
@@ -1782,10 +1794,10 @@ Returns the JSON-LD expansion of C<< $data >>.
 				println "13.14 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 			}
 		}
-		$self->_5_1_2_expansion_step_13_15($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
+		$self->_5_1_2_expansion_step_14($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
 	}
 
-	sub _5_1_2_expansion_step_13_15 {
+	sub _5_1_2_expansion_step_14 {
 		my $self			= shift;
 		my $activeCtx		= shift;
 		my $type_scoped_ctx	= shift;
@@ -1798,16 +1810,16 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my $element			= shift;
 		
 		# https://github.com/w3c/json-ld-api/issues/262
-		println "13.15" if $debug;
+		println "14" if $debug;
 		my @keys			= keys %$nests;
 		foreach my $nesting_key (@keys) {
 			delete $nests->{$nesting_key};
-			# 13.15
+			# 14
 			my $__indent	= indent();
-			println "13.15 [$nesting_key]" if $debug;
-			println "13.15.1" if $debug;
+			println "14 [$nesting_key]" if $debug;
+			println "14.1" if $debug;
 	# 		next unless (exists $element->{$nesting_key});
-			my $nested_values	= $element->{$nesting_key}; # 13.15.1
+			my $nested_values	= $element->{$nesting_key}; # 14.1
 	# 		if (not defined $nested_values) {
 	# 			$nested_values	= [];
 	# 		}
@@ -1815,24 +1827,24 @@ Returns the JSON-LD expansion of C<< $data >>.
 				$nested_values	= [$nested_values];
 			}
 
-			println "13.15.2" if $debug;
+			println "14.2" if $debug;
 			println(Data::Dumper->Dump([$nesting_key, $element, $nested_values], [qw(nesting_key element nested_values)]));
 			foreach my $nested_value (@$nested_values) {
 				my $__indent	= indent();
 				println '-----------------------------------------------------------------' if $debug;
-				println "13.15.2 loop iteration" if $debug;
+				println "14.2 loop iteration" if $debug;
 				if (ref($nested_value) ne 'HASH') {
-					println "13.15.2.1 " . Data::Dumper->Dump([$nested_value], ['*invalid_nest_value']) if $debug;
-					die 'invalid @nest value'; # 13.15.2.1
+					println "14.2.1 " . Data::Dumper->Dump([$nested_value], ['*invalid_nest_value']) if $debug;
+					die 'invalid @nest value'; # 14.2.1
 				}
 			
-				println "13.15.2.2 ENTER    =================> call to _5_1_2_expansion_step_13" if $debug;
+				println "14.2.2 ENTER    =================> call to _5_1_2_expansion_step_13" if $debug;
 				my $__indent_2	= indent();
-				$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $nested_value); # 13.15.2.2
+				$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $nested_value); # 14.2.2
 
 			}
 		}
-		println "after 13.15 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+		println "after 14 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 	}
 
 	sub _5_2_2_iri_expansion {
