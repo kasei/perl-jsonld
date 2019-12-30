@@ -25,7 +25,7 @@ my:project
 	:created				"2019-10-28"^^xsd:date ;
 	:maintainer				my:developer ;
 	:homepage				<http://search.cpan.org/dist/JSONLD/> ;
-	:bug-database			<https://github.com/kasei/JSONLD/issues> ;
+	:bug-database			<https://github.com/kasei/perl-jsonld/issues> ;
 	doap:download-page		<http://search.cpan.org/dist/JSONLD/> ;
 	doap:download-mirror	<http://kasei.us/code/files/> ;
 	:release				my:v_0-001 ;
