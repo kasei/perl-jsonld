@@ -443,7 +443,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 				
 				if (not defined($value)) {
 					println "5.10.3" if $debug;
-					delete $result->{'@direction'}
+					delete $result->{'@direction'};
 				} elsif (not ref($value)) {
 					println "5.10.4 \@direction = $value" if $debug;
 					if ($value ne 'ltr' and $value ne 'rtl') {
@@ -935,6 +935,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my $__indent	= indent();
 		local($Data::Dumper::Indent)	= 0;
 		println(Data::Dumper->Dump([$activeCtx], ['activeCtx'])) if $debug;
+		println(Data::Dumper->Dump([$activeProp], ['activeProp'])) if $debug;
 		println(Data::Dumper->Dump([$element], ['element'])) if $debug;
 		my %args		= @_;
 		my $frameExpansion	= $args{frameExpansion} // 0;
@@ -1082,7 +1083,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		foreach my $key (sort keys %$element) {
 			my $expandedKey	= $self->_5_2_2_iri_expansion($activeCtx, $key);
 			if ($expandedKey eq '@type') {
-				$input_type	= $element->{$key};
+				$input_type	= $self->_5_2_2_iri_expansion($activeCtx, $element->{$key});
 				last;
 			}
 		}
@@ -1333,8 +1334,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 					println "13.4.6 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 				} elsif ($expandedProperty eq '@value') {
 					println "13.4.7 " . Data::Dumper->Dump([$input_type], ['*input_type']) if $debug;
-					my $expandedInputType	= $self->_5_2_2_iri_expansion($activeCtx, $input_type); # https://github.com/w3c/json-ld-api/issues/269
-					if ($expandedInputType eq '@json') {
+					if ($input_type eq '@json') {
 						println "13.4.7.1" if $debug;
 						$expandedValue	= $value; # 13.4.7.1
 						if ($self->processing_mode eq 'json-ld-1.0') {
@@ -1801,9 +1801,6 @@ Returns the JSON-LD expansion of C<< $data >>.
 		println "13.15" if $debug;
 		my @keys			= keys %$nests;
 		foreach my $nesting_key (@keys) {
-### TODO: trying to make test tn005 work
-# 		while (scalar(%$nests)) {
-# 			my $nesting_key	= (keys %$nests)[0];
 			delete $nests->{$nesting_key};
 			# 13.15
 			my $__indent	= indent();
@@ -1833,15 +1830,8 @@ Returns the JSON-LD expansion of C<< $data >>.
 				my $__indent_2	= indent();
 				$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $nested_value); # 13.15.2.2
 
-### TODO: trying to make test tn005 work (when there is an inner @nest key inside the hash of the outer @nest key)
-# 				if (exists $nested_value->{'@nest'}) {
-# 					if (scalar(%$nests)) {
-# 						$self->_5_1_2_expansion_step_13_15($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
-# 					}
-# 				}
 			}
 		}
-# 		$self->_5_1_2_expansion_step_13_15($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
 		println "after 13.15 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 	}
 
@@ -1980,8 +1970,8 @@ Returns the JSON-LD expansion of C<< $data >>.
 			my $language	= (exists $tdef->{'language_mapping'}) ? $tdef->{'language_mapping'} : $activeCtx->{'@language'}; # 5.1
 
 			println "5.2" if $debug;
-			my $direction	= $tdef->{'direction_mapping'} // $activeCtx->{'@direction'}; # 5.2
-			
+			my $direction	= (exists $tdef->{'direction_mapping'}) ? $tdef->{'direction_mapping'} : $activeCtx->{'@direction'}; # 5.2
+
 			if (defined($language)) {
 				println "5.3" if $debug;
 				$result->{'@language'}	= $language; # 5.3
@@ -2096,6 +2086,7 @@ RDF-related methods:
 		my $__indent	= indent();
 		my $self			= shift;
 		my $element			= shift;
+# 		println(Data::Dumper->Dump([$element], ['element'])) if $debug;
 		my $map				= shift;
 		my $activeGraph		= shift // '@default';
 		my $activeSubject	= shift;
@@ -2121,14 +2112,27 @@ RDF-related methods:
 			$subjectNode	= $graph->{$activeSubject};
 		}
 		
+		unless (ref($element) eq 'HASH') {
+			Carp::cluck 'element is not a HASH';
+		}
+		
 		if (exists $element->{'@type'}) {
 			println "3" if $debug;
 			# https://github.com/w3c/json-ld-api/issues/276
-			foreach my $i (0 .. $#{ $element->{'@type'} }) {
-				my $item	= $element->{'@type'}[$i];
-				if ($item =~ /^_:/) {
-					println "3.1" if $debug;
-					$element->{'@type'}[$i]	= $self->_7_4_2_generate_blank_node_ident($item);
+			if (ref($element) and ref($element) ne 'HASH') {
+				Carp::cluck 'element is not a HASH';
+			}
+			if (ref($element->{'@type'})) {
+				foreach my $i (0 .. $#{ $element->{'@type'} }) {
+					my $item	= $element->{'@type'}[$i];
+					if ($item =~ /^_:/) {
+						println "3.1" if $debug;
+						$element->{'@type'}[$i]	= $self->_7_4_2_generate_blank_node_ident($item);
+					}
+				}
+			} else {
+				if ($element->{'@type'} =~ /^_:/) {
+					$element->{'@type'}	= $self->_7_4_2_generate_blank_node_ident($element->{'@type'});
 				}
 			}
 		}
@@ -2514,7 +2518,7 @@ RDF-related methods:
 	sub _8_3_2_list_conversion {
 		println "ENTER    =================> _8_3_2_list_conversion" if $debug;
 		my $__indent	= indent();
-		die 'TODO';
+		die 'TODO 8.3.2 list_conversion';
 	}
 	
 	sub new_graphname {
