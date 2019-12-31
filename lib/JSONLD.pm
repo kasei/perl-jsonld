@@ -1697,9 +1697,15 @@ Returns the JSON-LD expansion of C<< $data >>.
 							println "13.8.3.7.5" if $debug;
 							my $types	= [$expanded_index];
 							if (exists $item->{'@type'}) {
-								push(@$types, $item->{'@type'});
+								my $v	= $item->{'@type'};
+								if (ref($v) eq 'ARRAY') {
+									push(@$types, @{$item->{'@type'}});
+								} else {
+									push(@$types, $v);
+								}
 							}
 							$item->{'@type'}	= $types;
+							println "13.8.3.7.5 " . Data::Dumper->Dump([$types], ['types']) if $debug;
 						}
 						
 						println "13.8.3.7.6" if $debug;
