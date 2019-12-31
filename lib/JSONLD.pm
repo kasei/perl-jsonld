@@ -523,6 +523,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 
 		println "3" if $debug;
 		my $value	= clone($localCtx->{$term}); # 3
+		println "3 " . Data::Dumper->Dump([$value], ['value']) if $debug;
 		
 		# NOTE: the language interaction between 4 and 5 here is a mess. Unclear what "Otherwise" applies to. Similarly with the "Otherwise" that begins 7 below.
 		if ($self->processing_mode eq 'json-ld-1.1' and $term eq '@type') {
@@ -661,52 +662,52 @@ Returns the JSON-LD expansion of C<< $data >>.
 		println "15" if $debug;
 		$definition->{'reverse'}	= 0; # 15
 		
-		if (exists $value->{'@id'} and (defined($value->{'@id'}) and $value->{'@id'} ne $term)) {
+		if (exists $value->{'@id'} and $value->{'@id'} ne $term) {
 			# 16
 			println "16" if $debug;
-			my $id	= $value->{'@id'};
-# 			if (exists $value->{'@id'} and not(defined($id))) {
-# 				println "16.1" if $debug;
-# 				# 16.1
-# 			} else { # https://github.com/w3c/json-ld-api/issues/241
-				if (not _is_string($id)) {
-					println "16.2" if $debug;
-					die 'invalid IRI mapping'; # 16.2
-				}
+			if (not defined($value->{'@id'})) {
+				println "16.1" if $debug;
+			} else {
+				println "16.2" if $debug;
+				my $id	= $value->{'@id'};
+					if (not _is_string($id)) {
+						println "16.2.1" if $debug;
+						die 'invalid IRI mapping'; # 16.2
+					}
 			
-				if (defined($id) and not exists $keywords{$id} and $id =~ /^@[A-Za-z]+$/) {
-					println "16.3" if $debug;
-					warn "create term definition encountered an \@id that looks like a keyword: $id\n"; # 16.3
-					return;
-				} else {
-					# 16.4
-					println "16.4" if $debug;
-					my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $id, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
-					if (not exists $keywords{$iri} and not $self->_is_abs_iri($iri) and $iri !~ /:/) {
-						die 'invalid IRI mapping';
+					if (defined($id) and not exists $keywords{$id} and $id =~ /^@[A-Za-z]+$/) {
+						println "16.2.2" if $debug;
+						warn "create term definition encountered an \@id that looks like a keyword: $id\n";
+						return;
+					} else {
+						println "16.2.3" if $debug;
+						my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $id, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
+						if (not exists $keywords{$iri} and not $self->_is_abs_iri($iri) and $iri !~ /:/) {
+							die 'invalid IRI mapping';
+						}
+						if ($iri eq '@context') {
+							die 'invalid keyword alias';
+						}
+						$definition->{'iri_mapping'}	= $iri;
 					}
-					if ($iri eq '@context') {
-						die 'invalid keyword alias';
-					}
-					$definition->{'iri_mapping'}	= $iri;
-				}
-				if ($term =~ /.:./ or index($term, '/') >= 0) {
-					println "16.5" if $debug;
-					println "16.5.1" if $debug;
-					$defined->{$term}	= 1;
+					if ($term =~ /.:./ or index($term, '/') >= 0) {
+						println "16.2.4" if $debug;
+						println "16.2.4.1" if $debug;
+						$defined->{$term}	= 1;
 
-					my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $term, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
-					if ($iri ne $definition->{'iri_mapping'}) {
-						println "16.5.2" if $debug;
-						die 'invalid IRI mapping'; # 16.5 ; NOTE: the text here doesn't discuss what parameters to pass to IRI expansion
+						my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $term, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
+						if ($iri ne $definition->{'iri_mapping'}) {
+							println "16.2.4.2" if $debug;
+							die 'invalid IRI mapping'; # 16.5 ; NOTE: the text here doesn't discuss what parameters to pass to IRI expansion
+						}
 					}
-				}
 			
-				if ($term !~ m{[:/]} and $simple_term and $definition->{'iri_mapping'} =~ m{[][:/?#@]$}) {
-					println "16.6" if $debug;
-					$definition->{'prefix'}	= 1; # 16.6
-				}
-# 			}
+					if ($term !~ m{[:/]} and $simple_term and $definition->{'iri_mapping'} =~ m{[][:/?#@]$}) {
+						println "16.2.5" if $debug;
+						$definition->{'prefix'}	= 1;
+					}
+	# 			}
+			}
 		} elsif ($term =~ /.:/) {
 			# 17
 			println "17" if $debug;
@@ -730,10 +731,11 @@ Returns the JSON-LD expansion of C<< $data >>.
 			$definition->{'iri_mapping'}	= '@type'; # 19
 		} else {
 			# 20 ; NOTE: this section uses a passive voice "the IRI mapping of definition is set to ..." cf. 18 where it's active: "set the IRI mapping of definition to @type"
-			println "20" if $debug;
 			if (exists $activeCtx->{'@vocab'}) {
+				println "20" if $debug;
 				$definition->{'iri_mapping'}	= $activeCtx->{'@vocab'} . $term;
 			} else {
+				println "20" if $debug;
 				die 'invalid IRI mapping';
 			}
 		}
@@ -916,6 +918,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		}
 		
 		println "30 [setting defined{$term} = 1]" if $debug;
+		println "30 setting term definition " . Data::Dumper->Dump([$definition], [$term]) if $debug;
 		$activeCtx->{'terms'}{$term}	= $definition; # 30
 		$defined->{$term}	= 1; # 30
 		local($Data::Dumper::Indent)	= 0;
@@ -954,7 +957,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my $property_scoped_ctx;
 		my $tdef = $self->_ctx_term_defn($activeCtx, $activeProp);
 		if ($tdef and my $lctx = $tdef->{'@context'}) {
-			println "3 property-scoped context" if $debug;
+			println "3 property-scoped context for property $activeProp" if $debug;
 			$property_scoped_ctx	= $lctx; # 3
 		}
 		
@@ -968,6 +971,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 			if (defined($property_scoped_ctx)) {
 				println "4.2" if $debug;
 				$activeCtx = $self->_4_1_2_ctx_processing($activeCtx, $property_scoped_ctx); # 4.2
+				println "after 4.2: " . Data::Dumper->Dump([$activeCtx], ['activeCtx']) if $debug;
 			}
 			
 			my $v	= $self->_5_3_2_value_expand($activeCtx, $activeProp, $element);
@@ -1032,7 +1036,10 @@ Returns the JSON-LD expansion of C<< $data >>.
 			if ($tdef and exists $tdef->{'__source_base_iri'}) {
 				$args{base_iri}	= $tdef->{'__source_base_iri'};
 			}
+			local($Data::Dumper::Indent)	= 1;
+			println "before 8: " . Data::Dumper->Dump([$activeCtx, $property_scoped_ctx], [qw'activeCtx property_scoped_ctx']) if $debug;
 			$activeCtx = $self->_4_1_2_ctx_processing($activeCtx, $property_scoped_ctx, %args); # 8
+			println "after 8: " . Data::Dumper->Dump([$activeCtx], ['activeCtx']) if $debug;
 		}
 		
 		if (exists $element->{'@context'}) {
@@ -1108,13 +1115,13 @@ Returns the JSON-LD expansion of C<< $data >>.
 				die 'invalid value object' if (exists $result->{'@type'}); # 15.1
 			}
 			
-			if (not(defined($result->{'@value'}))) {
+# 			if (not(defined($result->{'@value'}))) {
+			if (defined($result->{'@type'}) and $result->{'@type'} eq '@json') {
 				println "15.2" if $debug;
-				return undef; # TODO: fixes test t0019
-			} elsif (defined($result->{'@type'}) and $result->{'@type'} eq '@json') {
-				# 15.3
-				println "15.3" if $debug;
 				# TODO: treat $result->{'@value'} as a JSON literal
+			} elsif (not(defined($result->{'@value'})) or (ref($result->{'@value'}) eq 'ARRAY' and not scalar(@{$result->{'@value'}}))) { # based on irc conversation with gkellog
+				println "15.3" if $debug;
+				return undef;
 			} elsif (ref($result->{'@value'}) and exists $result->{'@language'}) {
 				println "15.4" if $debug;
 				die 'invalid language-tagged value; ' . Dumper($result); # 15.4
@@ -1653,11 +1660,14 @@ Returns the JSON-LD expansion of C<< $data >>.
 							println(Data::Dumper->Dump([$item], ['*item'])) if $debug;
 						}
 
-						if ($self->_cm_contains($container_mapping, '@index') and $index_key ne '@index' and not exists $item->{'@index'} and $expanded_index ne '@none') {
+						if ($self->_cm_contains($container_mapping, '@index') and $index_key ne '@index' and $expanded_index ne '@none') {
 							println "13.8.3.7.2 " . Data::Dumper->Dump([$index_key], ['index_key']) if $debug;
+							println "13.8.3.7.2.1" if $debug;
+							my $re_expanded_index	= $self->_5_3_2_value_expand($activeCtx, $index_key, $index);
+							println "13.8.3.7.2.2" if $debug;
 							my $expanded_index_key	= $self->_5_2_2_iri_expansion($activeCtx, $index_key, vocab => 1);
-							warn "activeProp: $activeProp\n";
-							my $index_property_values	= [$self->_5_3_2_value_expand($activeCtx, $index_key, $index)]; # https://github.com/w3c/json-ld-api/issues/290
+							println "13.8.3.7.2.3" if $debug;
+							my $index_property_values	= [$re_expanded_index];
 							if (exists $item->{$expanded_index_key}) {
 								my $v	= $item->{$expanded_index_key};
 								if (ref($v) eq 'ARRAY') {
@@ -1666,8 +1676,8 @@ Returns the JSON-LD expansion of C<< $data >>.
 									push(@{$index_property_values}, $v);
 								}
 							}
-							warn Data::Dumper->Dump([$index, $expanded_index, $index_property_values], [qw(index expanded_index index_property_values)]);
-							$item->{$expanded_index_key}	= $index_property_values; # https://github.com/w3c/json-ld-api/issues/290
+							println "13.8.3.7.2.4" if $debug;
+							$item->{$expanded_index_key}	= $index_property_values;
 
 							if ($self->_is_value_object($item)) {
 								my @keys	= sort keys %$item;
@@ -1820,9 +1830,9 @@ Returns the JSON-LD expansion of C<< $data >>.
 			println "14.1" if $debug;
 	# 		next unless (exists $element->{$nesting_key});
 			my $nested_values	= $element->{$nesting_key}; # 14.1
-	# 		if (not defined $nested_values) {
-	# 			$nested_values	= [];
-	# 		}
+			if (not defined $nested_values) {
+				$nested_values	= [];
+			}
 			if (not(ref($nested_values)) or ref($nested_values) ne 'ARRAY') {
 				$nested_values	= [$nested_values];
 			}
