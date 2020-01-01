@@ -1466,7 +1466,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 								}
 							
 								println "13.4.13.3.2" if $debug;
-								push(@{ $result->{$property} }, $item);
+								push(@{ $result->{$property} }, @$item);
 							}
 						}
 					
