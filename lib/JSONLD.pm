@@ -106,7 +106,6 @@ Returns the JSON-LD expansion of C<< $data >>.
 		return 0 unless (length($value));
 		my $i		= eval { IRI->new($value) };
 		unless ($i) {
-			println("is_abs_iri: 0");
 			return 0;
 		}
 		my $is_abs = (defined($i->scheme) and $value eq $i->abs);
@@ -504,7 +503,6 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my $override_protected	= $args{override_protected} // 0;
 		my $propagate	= $args{propagate} // 1;
 		my $base_iri	= $args{base_iri} // $self->base_iri->abs;
-# 		println "BASE IRI for LOCAL CONTEXT: $base_iri";
 		
 		# 4.2.2
 		if (exists ($defined->{$term})) {
@@ -1031,7 +1029,6 @@ Returns the JSON-LD expansion of C<< $data >>.
 		
 		if (defined($property_scoped_ctx)) {
 			println "8" if $debug;
-			println(Dumper($property_scoped_ctx));
 			my %args;
 			if ($tdef and exists $tdef->{'__source_base_iri'}) {
 				$args{base_iri}	= $tdef->{'__source_base_iri'};
@@ -1065,7 +1062,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 			println "11 body [$key]" if $debug;
 			
 			unless (ref($value) eq 'ARRAY') {
-				println "11.1" if $debug;
+				println "11.1 [$key]" if $debug;
 				$value	= [$value]; # 11.1
 			}
 			
@@ -1076,6 +1073,8 @@ Returns the JSON-LD expansion of C<< $data >>.
 					if (my $c = $tdef->{'@context'}) {
 						println "11.2" if $debug;
 						$activeCtx	= $self->_4_1_2_ctx_processing($activeCtx, $c, propagate => 0);
+						local($Data::Dumper::Indent)	= 1;
+						println "11.2 " . Data::Dumper->Dump([$activeCtx], ['activeCtx']) if $debug;
 					}
 				}
 			}
@@ -1844,7 +1843,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 			}
 
 			println "14.2" if $debug;
-			println(Data::Dumper->Dump([$nesting_key, $element, $nested_values], [qw(nesting_key element nested_values)]));
+			println(Data::Dumper->Dump([$nesting_key, $element, $nested_values], [qw(nesting_key element nested_values)])) if $debug;
 			foreach my $nested_value (@$nested_values) {
 				my $__indent	= indent();
 				println '-----------------------------------------------------------------' if $debug;
@@ -1879,6 +1878,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my $localCtx			= $args{localCtx} // {};
 		my $defined				= $args{'defined'} // {};
 		local($Data::Dumper::Indent)	= 0;
+		println(Data::Dumper->Dump([$activeCtx], ['*activeCtx'])) if $debug;
 		println(Data::Dumper->Dump([$localCtx], ['*localCtx'])) if $debug;
 		println(Data::Dumper->Dump([$defined], ['*defined'])) if $debug;
 		
@@ -1905,7 +1905,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		if (my $tdef = $self->_ctx_term_defn($activeCtx, $value)) {
 			my $i	= $tdef->{'iri_mapping'};
 			if ($keywords{$i}) {
-				println "4 returning from _5_2_2_iri_expansion with a keyword" if $debug;
+				println "4 returning from _5_2_2_iri_expansion with a keyword: $i" if $debug;
 				return $i; # 4
 			}
 		}
@@ -2097,7 +2097,7 @@ RDF-related methods:
 	sub _is_well_formed {
 		my $self	= shift;
 		my $value	= shift;
-		println "TODO: _is_well_formed: $value";
+		println "TODO: _is_well_formed: $value" if $debug;
 		return 1;
 	}
 
@@ -2114,13 +2114,11 @@ RDF-related methods:
 		my $__indent	= indent();
 		my $self			= shift;
 		my $element			= shift;
-# 		println(Data::Dumper->Dump([$element], ['element'])) if $debug;
 		my $map				= shift;
 		my $activeGraph		= shift // '@default';
 		my $activeSubject	= shift;
 		my $activeProp		= shift;
 		my $list			= shift;
-# 		println(Data::Dumper->Dump([$activeGraph, $activeSubject, $activeProp], [qw(activeGraph activeSubject activeProp)]));
 		
 		println "1" if $debug;
 		if (ref($element) eq 'ARRAY') {
@@ -2263,7 +2261,7 @@ RDF-related methods:
 			
 			if (exists $element->{'@index'}) {
 				println "6.8" if $debug;
-				println "6.8 TODO check if element has a pre-existing value";
+				println "6.8 TODO check if element has a pre-existing value" if $debug;
 				$node->{'@index'}	= delete $element->{'@index'};
 			}
 
