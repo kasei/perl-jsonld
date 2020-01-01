@@ -19,7 +19,7 @@ our $debug	= 0;
 $JSONLD::debug	= $debug;
 our $PATTERN;
 if ($debug) {
-	$PATTERN = qr/t0099/;
+	$PATTERN = qr/t0077/;
 } else {
 	$PATTERN	= /./;
 }
@@ -51,6 +51,10 @@ foreach my $t (@$tests) {
 	my $spec_v	= $options->{'specVersion'} // '';
 	my @types	= @{ $t->{'@type'} };
 	my %types	= map { $_ => 1 } @types;
+	my %args;
+	if (my $expand = $options->{'expandContext'}) {
+		$args{'expandContext'}	= $expand;
+	}
 
 	my $test_base;
 	if (defined($_base)) {
@@ -73,7 +77,7 @@ foreach my $t (@$tests) {
 			warn "Input file: $infile\n";
 			warn "INPUT:\n===============\n" . JSON->new->pretty->encode($data); # Dumper($data);
 		}
-		my $expanded	= eval { $jld->expand($data) };
+		my $expanded	= eval { $jld->expand($data, %args) };
 		if ($@) {
 			diag("Died: $@");
 		}

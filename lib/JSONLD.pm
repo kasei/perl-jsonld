@@ -64,7 +64,7 @@ package JSONLD {
 	our $debug		= 0;
 	my %keywords	= map { $_ => 1 } qw(: @base @container @context @direction @graph @id @import @included @index @json @language @list @nest @none @prefix @propagate @protected @reverse @set @type @value @version @vocab);
 	
-=item C<< expand( $data ) >>
+=item C<< expand( $data, [expandContext => $ctx] ) >>
 
 Returns the JSON-LD expansion of C<< $data >>.
 
@@ -73,9 +73,17 @@ Returns the JSON-LD expansion of C<< $data >>.
 	sub expand {
 		my $self	= shift;
 		my $d		= shift;
+		my %args	= @_;
+		
 		my $ctx		= {
 			'@base' => $self->base_iri->abs, # TODO: not sure this follows the spec, but it's what makes test t0089 pass
 		};
+		if (my $ec = $args{expandContext}) {
+			if (ref($ec) eq 'HASH' and exists $ec->{'@context'}) {
+				$ec	= $ec->{'@context'};
+			}
+			$ctx	= $self->_4_1_2_ctx_processing($ctx, $ec);
+		}
 # 		warn "Expanding...";
 		return $self->_expand($ctx, undef, $d);
 	}
