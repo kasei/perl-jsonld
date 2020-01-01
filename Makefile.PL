@@ -23,8 +23,8 @@ requires		'LWP::Protocol::https'		=> 0;
 
 resources(
 	'homepage'		=> "http://search.cpan.org/dist/JSONLD/",
-	'repository'	=> "http://github.com/kasei/json-ld/",
-	'bugtracker'	=> "https://github.com/kasei/json-ld/issues",
+	'repository'	=> "http://github.com/kasei/perl-jsonld/",
+	'bugtracker'	=> "https://github.com/kasei/perl-jsonld/issues",
 	'IRC'			=> "irc://irc.perl.org/#perlrdf",
 );
 
