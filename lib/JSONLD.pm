@@ -36,8 +36,6 @@ package JSONLD {
 	use autodie;
 	our $VERSION	= '0.000_02';
 	use utf8;
-	use Test::More;
-	use Test::Exception;
 	use Moo;
 	use LWP;
 	use List::Util qw(all any);
