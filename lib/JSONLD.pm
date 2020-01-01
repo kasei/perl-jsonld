@@ -94,7 +94,8 @@ Returns the JSON-LD expansion of C<< $data >>.
 		return 0 if ref($v);
 		my $sv	= svref_2object(\$v);
 		my $flags	= $sv->FLAGS;
-		return $flags & SVf_POK;
+		my $is_string	= $flags & SVf_POK;
+		return $is_string;
 	}
 	
 	sub _expand {
@@ -562,7 +563,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		if (not(defined($value))) {
 			println "7" if $debug;
 			$value	= {'@id' => undef}; # 7
-		} elsif (not(ref($value))) {
+		} elsif (_is_string($value)) {
 			# 8
 			println "8 value = {'\@id' => $value}" if $debug;
 			$value	= {'@id' => $value};
@@ -1278,7 +1279,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 
 				if ($expandedProperty eq '@type') {
 					println "13.4.4" if $debug;
-					my $is_string = not(ref($value));
+					my $is_string = _is_string($value);
 					my $is_array	= ref($value) eq 'ARRAY';
 					my $is_array_of_strings	= ($is_array and all { not(ref($_)) } @$value);
 					if (not($is_string) and not($is_array_of_strings)) {
@@ -1970,23 +1971,24 @@ Returns the JSON-LD expansion of C<< $data >>.
 	}
 	
 	sub _5_3_2_value_expand {
-		println "ENTER    =================> _5_3_2_value_expand" if $debug;
-		my $__indent	= indent();
 		my $self		= shift;
 		my $activeCtx	= shift;
 		my $activeProp	= shift;
 		my $value		= shift;
+		my $_vs			= Data::Dumper->new([$value], ['value'])->Terse(1)->Dump([$value], ['value']);
+		println "ENTER    =================> _5_3_2_value_expand($_vs)" if $debug;
+		my $__indent	= indent();
 		
 		my $tdef	= $self->_ctx_term_defn($activeCtx, $activeProp);
 
 		if (exists $tdef->{'type_mapping'}) {
-			if ($tdef->{'type_mapping'} eq '@id' and not(ref($value))) {
+			if ($tdef->{'type_mapping'} eq '@id' and _is_string($value)) {
 				my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $value, documentRelative => 1);
 				println "1 returning from _5_3_2_value_expand with new map containing \@id: $iri" if $debug;
 				return { '@id' => $iri }; # 1
 			}
 
-			if ($tdef->{'type_mapping'} eq '@vocab' and not(ref($value))) {
+			if ($tdef->{'type_mapping'} eq '@vocab' and _is_string($value)) {
 				my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $value, vocab => 1, documentRelative => 1);
 				println "1 returning from _5_3_2_value_expand with new map containing vocab \@id: $iri" if $debug;
 				return { '@id' => $iri }; # 2
