@@ -32,6 +32,21 @@ sub load_json {
 	return $j->decode(do { local($/); <$fh> });
 }
 
+sub _normalize {
+	# give array elements a predictable order (https://w3c.github.io/json-ld-api/tests/#json-ld-object-comparison)
+	my $data	= shift;
+	return $data unless (ref($data));
+	if (ref($data) eq 'ARRAY') {
+		my $j		= JSON->new->canonical(1)->allow_nonref(1);
+		my @v	= sort { $j->encode($a) cmp $j->encode($b) } map { _normalize($_) } @$data;
+		return [@v];
+	} elsif (ref($data) eq 'HASH') {
+		return { map { $_ => _normalize($data->{$_}) } (keys %$data) };
+	} else {
+		die "Unexpected ref type: " . ref($data);
+	}
+}
+
 $Data::Dumper::Sortkeys	= 1;
 my $path	= File::Spec->catfile( $Bin, 'data', 'json-ld-api-w3c' );
 my $manifest	= File::Spec->catfile($path, 'expand-manifest.jsonld');
@@ -72,7 +87,7 @@ foreach my $t (@$tests) {
 		my $infile		= File::Spec->catfile($path, $input);
 		my $outfile		= File::Spec->catfile($path, $expect);
 		my $data		= load_json($infile);
-		my $expected	= $j->encode(load_json($outfile));
+		my $expected	= _normalize($j->encode(load_json($outfile)));
 		if ($debug) {
 			warn "Input file: $infile\n";
 			warn "INPUT:\n===============\n" . JSON->new->pretty->encode($data); # Dumper($data);
@@ -81,7 +96,7 @@ foreach my $t (@$tests) {
 		if ($@) {
 			diag("Died: $@");
 		}
-		my $got			= $j->encode($expanded);
+		my $got			= _normalize($j->encode($expanded));
 		if ($debug) {
 			my @data	= (
 				['EXPECTED', $expected],
