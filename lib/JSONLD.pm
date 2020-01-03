@@ -711,7 +711,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		println "15" if $debug;
 		$definition->{'reverse'}	= 0; # 15
 		
-		if (exists $value->{'@id'} and $value->{'@id'} ne $term) {
+		if (exists $value->{'@id'} and (not(defined($value->{'@id'})) or $value->{'@id'} ne $term)) {
 			# 16
 			println "16" if $debug;
 			if (not defined($value->{'@id'})) {
@@ -1942,7 +1942,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		}
 
 		if (my $tdef = $self->_ctx_term_defn($activeCtx, $value)) {
-			my $i	= $tdef->{'iri_mapping'};
+			my $i	= $tdef->{'iri_mapping'} // '';
 			if ($keywords{$i}) {
 				println "4 returning from _5_2_2_iri_expansion with a keyword: $i" if $debug;
 				return $i; # 4
@@ -2491,7 +2491,9 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 									$o,
 									$graph_iri
 								);
-								$self->add_quad($q, $dataset);
+								if ($q) {
+									$self->add_quad($q, $dataset);
+								}
 							}
 							println "1.3.2.5.4" if $debug;
 							foreach my $t (@$list_triples) {
