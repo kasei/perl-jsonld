@@ -88,6 +88,33 @@ Returns the JSON-LD expansion of C<< $data >>.
 		return $self->_expand($ctx, undef, $d);
 	}
 	
+	sub _expand {
+		my $self	= shift;
+		my $ctx		= shift // {};
+		my $prop	= shift;
+		my $d		= shift;
+		my $expanded_output	= $self->_5_1_2_expansion($ctx, $prop, $d, @_);
+		if (ref($expanded_output) eq 'HASH') {
+			my @keys	= keys %$expanded_output;
+			if (scalar(@keys) == 1 and $keys[0] eq '@graph') {
+				println "_expand 7.1" if $debug;
+				$expanded_output	= $expanded_output->{'@graph'};
+			}
+		}
+		
+		unless (defined($expanded_output)) {
+			println "_expand 7.2" if $debug;
+			$expanded_output	= [];
+		}
+		
+		if (ref($expanded_output) ne 'ARRAY') {
+			println "_expand 7.3" if $debug;
+			$expanded_output	= [$expanded_output];
+		}
+		
+		return $expanded_output;
+	}
+	
 	sub _is_string {
 		my $v	= shift;
 		return 0 unless defined($v);
@@ -114,15 +141,6 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my $flags	= $sv->FLAGS;
 		my $is_num	= (($flags & SVf_NOK) or ($flags & SVf_IOK));
 		return $is_num;
-	}
-	
-	sub _expand {
-		my $self	= shift;
-		my $ctx		= shift // {};
-		my $prop	= shift;
-		my $d		= shift;
-		my $v	= $self->_5_1_2_expansion($ctx, $prop, $d, @_);
-		return $v;
 	}
 	
 	sub _is_abs_iri {
@@ -1227,25 +1245,8 @@ Returns the JSON-LD expansion of C<< $data >>.
 			println "19 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 		}
 		
-		if (ref($result) eq 'HASH') {
-			if (scalar(@keys) == 1 and $keys[0] eq '@graph') {
-				println "20" if $debug;
-				$result	= $result->{'@graph'};
-			}
-		}
-		
-		unless (defined($result)) {
-			println "21" if $debug;
-			$result	= [];
-		}
-		
-		if (ref($result) ne 'ARRAY') {
-			println "22" if $debug;
-			$result	= [$result];
-		}
-		
 		local($Data::Dumper::Indent)	= 1;
-		println "23 returning from _5_1_2_expansion with final value " . Data::Dumper->Dump([$result], ['*result']) if $debug;
+		println "20 returning from _5_1_2_expansion with final value " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 		return $result; # 19
 	}
 	
@@ -1489,59 +1490,56 @@ Returns the JSON-LD expansion of C<< $data >>.
 					$expandedValue	= $self->_5_1_2_expansion($activeCtx, '@reverse', $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.13.1
 					println "13.4.13.2 " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 					
-					foreach my $ev (@{ $expandedValue }) { # https://github.com/w3c/json-ld-api/issues/294
-						my $expandedValue	= $ev;
-						if (ref($expandedValue) eq 'HASH' and exists $expandedValue->{'@reverse'}) { # NOTE: spec text does not assert that expandedValue is a map
-							println "13.4.13.3" if $debug;
-							foreach my $property (keys %{ $expandedValue->{'@reverse'} }) {
-								my $__indent	= indent();
-								println "13.4.13.3 [$property]" if $debug;
-								my $item	= $expandedValue->{'@reverse'}{$property};
-								if (not exists $result->{$property}) {
-									println "13.4.13.3.1" if $debug;
-									$result->{$property}	= [];
-								}
-							
-								println "13.4.13.3.2" if $debug;
-								push(@{ $result->{$property} }, @$item);
+					if (ref($expandedValue) eq 'HASH' and exists $expandedValue->{'@reverse'}) { # NOTE: spec text does not assert that expandedValue is a map
+						println "13.4.13.3" if $debug;
+						foreach my $property (keys %{ $expandedValue->{'@reverse'} }) {
+							my $__indent	= indent();
+							println "13.4.13.3 [$property]" if $debug;
+							my $item	= $expandedValue->{'@reverse'}{$property};
+							if (not exists $result->{$property}) {
+								println "13.4.13.3.1" if $debug;
+								$result->{$property}	= [];
 							}
+						
+							println "13.4.13.3.2" if $debug;
+							push(@{ $result->{$property} }, @$item);
 						}
+					}
+				
+					if (ref($expandedValue) eq 'HASH') { # NOTE: spec text does not assert that expandedValue is a map
+						my @keys	= grep { $_ ne '@reverse' } keys %$expandedValue;
+						if (scalar(@keys)) {
+							println "13.4.13.4" if $debug;
 					
-						if (ref($expandedValue) eq 'HASH') { # NOTE: spec text does not assert that expandedValue is a map
-							my @keys	= grep { $_ ne '@reverse' } keys %$expandedValue;
-							if (scalar(@keys)) {
-								println "13.4.13.4" if $debug;
+							if (not exists $result->{'@reverse'}) {
+								println "13.4.13.4.1" if $debug;
+								$result->{'@reverse'}	= {};
+							}
+					
+							println "13.4.13.4.2" if $debug;
+							my $reverse_map	= $result->{'@reverse'};
+					
+							println "13.4.13.4.3" if $debug;
+							foreach my $property (grep { $_ ne '@reverse' } keys %{ $expandedValue }) {
+								my $__indent	= indent();
+								println "13.4.13.4.3 [$property]" if $debug;
+								my $items	= $expandedValue->{$property};
 						
-								if (not exists $result->{'@reverse'}) {
-									println "13.4.13.4.1" if $debug;
-									$result->{'@reverse'}	= {};
-								}
-						
-								println "13.4.13.4.2" if $debug;
-								my $reverse_map	= $result->{'@reverse'};
-						
-								println "13.4.13.4.3" if $debug;
-								foreach my $property (grep { $_ ne '@reverse' } keys %{ $expandedValue }) {
+								println "13.4.13.4.3.1" if $debug;
+								foreach my $item (@$items) {
 									my $__indent	= indent();
-									println "13.4.13.4.3 [$property]" if $debug;
-									my $items	= $expandedValue->{$property};
-							
-									println "13.4.13.4.3.1" if $debug;
-									foreach my $item (@$items) {
-										my $__indent	= indent();
-										if ($self->_is_value_object($item) or $self->_is_list_object($item)) {
-											println "13.4.13.4.3.1.1" if $debug;
-											die 'invalid reverse property value';
-										}
-								
-										if (not exists $reverse_map->{$property}) {
-											println "13.4.13.4.3.1.2" if $debug;
-											$reverse_map->{$property}	= [];
-										}
-								
-										println "13.4.13.4.3.1.3" if $debug;
-										push(@{ $reverse_map->{$property} }, $item);
+									if ($self->_is_value_object($item) or $self->_is_list_object($item)) {
+										println "13.4.13.4.3.1.1" if $debug;
+										die 'invalid reverse property value';
 									}
+							
+									if (not exists $reverse_map->{$property}) {
+										println "13.4.13.4.3.1.2" if $debug;
+										$reverse_map->{$property}	= [];
+									}
+							
+									println "13.4.13.4.3.1.3" if $debug;
+									push(@{ $reverse_map->{$property} }, $item);
 								}
 							}
 						}
@@ -1690,7 +1688,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 					}
 					
 					println "13.8.3.6" if $debug;
-					$index_value	= $self->_expand($map_context, $key, $index_value, frameExpansion => $frameExpansion, ordered => $ordered);
+					$index_value	= $self->_5_1_2_expansion($map_context, $key, $index_value, frameExpansion => $frameExpansion, ordered => $ordered);
 					println(Data::Dumper->Dump([$index_value], ['*index_value'])) if $debug;
 					
 					println "13.8.3.7" if $debug;
@@ -1698,11 +1696,14 @@ Returns the JSON-LD expansion of C<< $data >>.
 						my $__indent	= indent();
 						println '-----------------------------------------------------------------' if $debug;
 						println "13.8.3.7 [$item]" if $debug;
-						if ($self->_cm_contains($container_mapping, '@graph')) {
+						if ($self->_cm_contains($container_mapping, '@graph') and not $self->_is_graph_object($item)) {
 							println(Data::Dumper->Dump([$container_mapping], ['*container_mapping'])) if $debug;
 							println "13.8.3.7.1" if $debug;
 							$item	= {'@graph' => (ref($item) eq 'ARRAY') ? $item : [$item]};
 							println(Data::Dumper->Dump([$item], ['*item'])) if $debug;
+						} elsif ($self->_is_graph_object($item) and ref($item->{'@graph'}) ne 'ARRAY') {
+							println "13.8.3.7.1a" if $debug; # https://github.com/w3c/json-ld-api/issues/294
+							$item->{'@graph'}	= [$item->{'@graph'}];
 						}
 
 						if ($self->_cm_contains($container_mapping, '@index') and $index_key ne '@index' and $expanded_index ne '@none') {
