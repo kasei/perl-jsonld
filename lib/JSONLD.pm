@@ -1352,8 +1352,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 				if ($expandedProperty eq '@graph') {
 					println "13.4.5" if $debug;
 					my $v	= $self->_5_1_2_expansion($activeCtx, '@graph', $value, frameExpansion => $frameExpansion, ordered => $ordered);
-					# TODO: ensure that expanded value is an array of one or more maps
-					$expandedValue	= $v;
+					$expandedValue	= (ref($v) eq 'ARRAY') ? $v : [$v];
 					println "13.4.5 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 				}
 
@@ -1697,9 +1696,6 @@ Returns the JSON-LD expansion of C<< $data >>.
 							println "13.8.3.7.1" if $debug;
 							$item	= {'@graph' => (ref($item) eq 'ARRAY') ? $item : [$item]};
 							println(Data::Dumper->Dump([$item], ['*item'])) if $debug;
-						} elsif ($self->_is_graph_object($item) and ref($item->{'@graph'}) ne 'ARRAY') {
-							println "13.8.3.7.1a" if $debug; # https://github.com/w3c/json-ld-api/issues/294
-							$item->{'@graph'}	= [$item->{'@graph'}];
 						}
 
 						if ($self->_cm_contains($container_mapping, '@index') and $index_key ne '@index' and $expanded_index ne '@none') {
