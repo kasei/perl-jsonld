@@ -50,7 +50,7 @@ package JSONLD {
 	use Data::Dumper;
 	use Clone 'clone';
 	use Carp qw(confess);
-	use B qw(svref_2object SVf_IOK SVf_POK);
+	use B qw(svref_2object SVf_IOK SVf_POK SVf_NOK SVf_IOK);
 	use namespace::clean;
 	
 	has 'base_iri' => (is => 'rw', required => 0, default => sub { IRI->new('http://example.org/') });
@@ -96,6 +96,24 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my $flags	= $sv->FLAGS;
 		my $is_string	= $flags & SVf_POK;
 		return $is_string;
+	}
+	
+	sub _is_integer {
+		my $v	= shift;
+		return 0 unless (_is_numeric($v));
+		my $i	= int($v);
+		my $f	= $v - $i;
+		return ($f == 0);
+	}
+
+	sub _is_numeric {
+		my $v	= shift;
+		return 0 unless defined($v);
+		return 0 if ref($v);
+		my $sv	= svref_2object(\$v);
+		my $flags	= $sv->FLAGS;
+		my $is_num	= (($flags & SVf_NOK) or ($flags & SVf_IOK));
+		return $is_num;
 	}
 	
 	sub _expand {
@@ -778,7 +796,6 @@ Returns the JSON-LD expansion of C<< $data >>.
 				} elsif (any { $_ eq '@set' } @$container and any { $_ =~ /^[@](index|graph|id|type|language)$/ } @$container) {
 					
 				} else {
-					warn Dumper($container) if $debug;
 					println "21.1(b)" if $debug;
 					die 'invalid container mapping';
 				}
@@ -971,10 +988,14 @@ Returns the JSON-LD expansion of C<< $data >>.
 		}
 		
 		my $property_scoped_ctx;
+		my $property_scoped_ctx_defined	= 0;
 		my $tdef = $self->_ctx_term_defn($activeCtx, $activeProp);
-		if ($tdef and my $lctx = $tdef->{'@context'}) {
-			println "3 property-scoped context for property $activeProp" if $debug;
+		warn Dumper($tdef);
+		if ($tdef and exists $tdef->{'@context'}) {
+			$property_scoped_ctx_defined	= 1;
+			my $lctx = $tdef->{'@context'};
 			$property_scoped_ctx	= $lctx; # 3
+			println "3 property-scoped context for property $activeProp: " . Data::Dumper->Dump([$property_scoped_ctx], [qw(context)]) if $debug;
 		}
 		
 		if (not(ref($element))) {
@@ -984,12 +1005,13 @@ Returns the JSON-LD expansion of C<< $data >>.
 				println "4.1 returning from _5_1_2_expansion: free floating scalar" if $debug;
 				return; # 4.1
 			}
-			if (defined($property_scoped_ctx)) {
+			if ($property_scoped_ctx_defined) {
 				println "4.2" if $debug;
 				$activeCtx = $self->_4_1_2_ctx_processing($activeCtx, $property_scoped_ctx); # 4.2
 				println "after 4.2: " . Data::Dumper->Dump([$activeCtx], ['activeCtx']) if $debug;
 			}
 			
+			println "4.3" if $debug;
 			my $v	= $self->_5_3_2_value_expand($activeCtx, $activeProp, $element);
 			local($Data::Dumper::Indent)	= 1;
 			println "4.3 returning from _5_1_2_expansion with " . Data::Dumper->Dump([$v], ['expandedValue']) if $debug;
@@ -1030,8 +1052,10 @@ Returns the JSON-LD expansion of C<< $data >>.
 			return \@result; # 5.3
 		}
 		
-		println "6" if $debug;
-		die "Unexpected non-map encountered during expansion: $element" unless (ref($element) eq 'HASH'); # 6; assert
+		unless (ref($element) eq 'HASH') {
+			println "6" if $debug;
+			die "Unexpected non-map encountered during expansion: $element";
+		}
 
 		if (my $prevCtx = $activeCtx->{'previous_context'}) {
 			unless ($fromMap) {
@@ -1045,7 +1069,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 			}
 		}
 		
-		if (defined($property_scoped_ctx)) {
+		if ($property_scoped_ctx_defined) {
 			println "8" if $debug;
 			my %args;
 			if ($tdef and exists $tdef->{'__source_base_iri'}) {
@@ -1143,7 +1167,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 				println "15.4" if $debug;
 				die 'invalid language-tagged value; ' . Dumper($result); # 15.4
 			} elsif (exists $result->{'@type'} and not($self->_is_iri($result->{'@type'}))) {
-				warn "Not an IRI \@type: " . Dumper($result->{'@type'});
+				println "Not an IRI \@type: " . Dumper($result->{'@type'});
 				println "15.5" if $debug;
 				die 'invalid typed value: ' . Dumper($result); # 15.5
 # 			} elsif (exists $result->{'@type'}) {
@@ -2084,9 +2108,16 @@ RDF-related methods:
 		$self->next_identifier_id(0);
 		$self->_7_2_2_nodemap_generation($expandedInput, $map);
 		println(Data::Dumper->Dump([$map], ['node_map'])) if $debug;
-
 		$self->_8_1_2_to_rdf($map, $dataset);
 		return $dataset;
+	}
+	
+	sub _is_well_formed_graph_node {
+		my $self	= shift;
+		my $value	= shift;
+		return 1 if $self->_is_well_formed_iri($value);
+		return 1 if ($value =~ /^_:/);
+		return 0;
 	}
 	
 	sub _is_well_formed_language {
@@ -2097,6 +2128,14 @@ RDF-related methods:
 			println "not a well-formed language: $value\n" if $debug;
 		}
 		return $ok;
+	}
+	
+	sub _is_well_formed_datatype {
+		my $self	= shift;
+		my $value	= shift;
+		return 1 if ($value eq '@json');
+		return 1 if $self->_is_well_formed_iri($value);
+		return 0;
 	}
 	
 	sub _is_well_formed_iri {
@@ -2139,6 +2178,7 @@ RDF-related methods:
 		my $__indent	= indent();
 		my $self			= shift;
 		my $element			= shift;
+		println(Data::Dumper->Dump([$element], [qw(element)])) if $debug;
 		my $map				= shift;
 		my $activeGraph		= shift // '@default';
 		my $activeSubject	= shift;
@@ -2205,6 +2245,9 @@ RDF-related methods:
 						push(@{ $subjectNode->{$activeProp} }, $element);
 					}
 				}
+			} else {
+				println "4.2" if $debug;
+				push(@{ $list->{'@list'} }, $element);
 			}
 		} elsif (exists $element->{'@list'}) {
 			println "5" if $debug;
@@ -2212,10 +2255,11 @@ RDF-related methods:
 			my $result	= {'@list' => []};
 			
 			println "5.2" if $debug;
-			$self->_7_2_2_nodemap_generation($element->{'@list'}, $map, $activeGraph, $activeSubject, $activeProp, $list);
+			$self->_7_2_2_nodemap_generation($element->{'@list'}, $map, $activeGraph, $activeSubject, $activeProp, $result);
 			
 			if (not defined($list)) {
 				println "5.3" if $debug;
+				println(Data::Dumper->Dump([$result], [qw(result)])) if $debug;
 				push(@{ $subjectNode->{$activeProp} }, $result);
 			} else {
 				println "5.4" if $debug;
@@ -2274,12 +2318,14 @@ RDF-related methods:
 							push(@{ $subjectNode->{$activeProp} }, $reference);
 						}
 					}
+				} else {
+					push(@{ $list->{'@list'} }, $reference);
 				}
 			}
 			
 			if (exists $element->{'@type'}) {
 				println "6.7" if $debug;
-				my %exists	= map { $_ => 1 } @{ $element->{'@type'} };
+				my %exists	= map { $_ => 1 } @{ $node->{'@type'} };
 				push(@{ $node->{'@type'} }, grep { not exists $exists{$_} }@{ $element->{'@type'} });
 				delete $element->{'@type'};
 			}
@@ -2417,9 +2463,9 @@ RDF-related methods:
 						foreach my $type (@$values) {
 							if ($self->_is_well_formed_iri($type)) {
 								my $q	= $self->new_quad(
-									$subject,
+									$self->new_graph_node($subject),
 									$self->new_iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'),
-									$type,
+									$self->new_iri($type),
 									$graph_iri
 								);
 								$self->add_quad($q, $dataset);
@@ -2453,7 +2499,8 @@ RDF-related methods:
 								$self->add_quad($q, $dataset);
 							}
 							println "1.3.2.5.4" if $debug;
-							foreach my $q (@$list_triples) {
+							foreach my $t (@$list_triples) {
+								my $q	= $t->as_quad($graph_iri);
 								$self->add_quad($q, $dataset);
 							}
 						}
@@ -2469,8 +2516,9 @@ RDF-related methods:
 		my $self			= shift;
 		my $item			= shift;
 		my $list_triples	= shift;
-		if ($self->_is_node_object($item) and not $self->_is_well_formed_iri($item->{'@id'})) {
+		if ($self->_is_node_object($item) and not $self->_is_well_formed_graph_node($item->{'@id'})) {
 			println "1" if $debug;
+			println "*** _8_2_2_object_to_rdf RETURNING NULL on " . Data::Dumper->Dump([$item], ['item']) if $debug;
 			return;
 		}
 
@@ -2495,13 +2543,15 @@ RDF-related methods:
 		println "5" if $debug;
 		my $datatype	= $item->{'@type'};
 
-		if (defined($datatype) and not $self->_is_well_formed_iri($datatype)) { # https://github.com/w3c/json-ld-api/issues/282
+		if (defined($datatype) and not $self->_is_well_formed_datatype($datatype)) { # https://github.com/w3c/json-ld-api/issues/282 ; https://github.com/w3c/json-ld-api/issues/298
 			println "6" if $debug;
+			println "*** _8_2_2_object_to_rdf RETURNING NULL" if $debug;
 			return;
 		}
 		
 		if (exists $item->{'@language'} and not $self->_is_well_formed_language($item->{'@language'})) {
 			println "7" if $debug;
+			println "*** _8_2_2_object_to_rdf RETURNING NULL" if $debug;
 			return;
 		}
 		
@@ -2512,8 +2562,21 @@ RDF-related methods:
 		}
 		
 		println "9 TODO bool? " . Data::Dumper->Dump([$value], ['value']) if $debug;
-		println "10/11 TODO numeric? " . Data::Dumper->Dump([$value], ['value']) if $debug;
 		
+		if (_is_numeric($value) and (not(_is_integer($value)) or (defined($datatype) and $datatype eq 'http://www.w3.org/2001/XMLSchema#double'))) {
+			println "10" if $debug;
+			$value	= sprintf('%E', $value);
+			$value	=~ s/0+E/0E/;
+			$value	=~ s/(\d)0E/$1E/;
+			$value	=~ s/E[+]0+/E0/;
+			$value	=~ s/E0+([1-9])/E$1/;
+			$datatype	= 'http://www.w3.org/2001/XMLSchema#double';
+		} elsif (_is_integer($value) or (_is_numeric($value) and (defined($datatype) and $datatype eq 'http://www.w3.org/2001/XMLSchema#integer'))) {
+			println "11" if $debug;
+			$value	= sprintf('%d', $value);
+			$datatype	= 'http://www.w3.org/2001/XMLSchema#integer';
+		}
+
 		if (not defined($datatype)) {
 			println "12" if $debug;
 			$datatype	= (exists $item->{'@language'}) ? 'http://www.w3.org/1999/02/22-rdf-syntax-ns#langString' : 'http://www.w3.org/2001/XMLSchema#string';
@@ -2568,10 +2631,65 @@ RDF-related methods:
 
 	sub _8_3_2_list_conversion {
 		println "ENTER    =================> _8_3_2_list_conversion" if $debug;
-		my $__indent	= indent();
-		die 'TODO 8.3.2 list_conversion';
+		my $__indent		= indent();
+		my $self			= shift;
+		my $list			= shift;
+		my $list_triples	= shift;
+		
+		my $NIL	= $self->new_iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#nil');
+		if (scalar(@$list) == 0) {
+			println "1" if $debug;
+			return $NIL;
+		}
+		
+		println "2" if $debug;
+		my $bnodes	= [map { $self->new_blank() } @$list];
+		foreach my $i (0..$#{$bnodes}) {
+			my $subject	= $bnodes->[$i];
+			my $item	= $list->[$i];
+			println "3" if $debug;
+			println "3.1" if $debug;
+			my $embedded_triples	= [];
+			
+			println "3.2" if $debug;
+			my $object	= $self->_8_2_2_object_to_rdf($item, $embedded_triples);
+			
+			if (defined($object)) {
+				println "3.3" if $debug;
+				push(@$list_triples, $self->new_triple(
+					$subject,
+					$self->new_iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#first'),
+					$object
+				));
+			}
+			
+			println "3.4" if $debug;
+			my $rest	= ($i == $#{$bnodes}) ? $NIL : $bnodes->[$i+1];
+			push(@$list_triples, $self->new_triple(
+				$subject,
+				$self->new_iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#rest'),
+				$rest
+			));
+			
+			println "3.5" if $debug;
+			push(@$list_triples, @$embedded_triples);
+		}
+
+		println "4" if $debug;
+		my $head	= (scalar(@$bnodes)) ? $bnodes->[0] : $NIL;
+		return $head;
 	}
 	
+	sub new_graph_node {
+		my $self	= shift;
+		my $value	= shift;
+		if ($value =~ /_:(.*)/) {
+			return $self->new_blank($1);
+		} else {
+			return $self->new_iri($value);
+		}
+	}
+
 	sub new_graphname {
 		my $self	= shift;
 		Carp::cluck 'RDF term constructors must be overloaded in a JSONLD subclass';
