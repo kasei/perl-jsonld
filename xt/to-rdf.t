@@ -19,7 +19,7 @@ our $debug	= 1;
 $JSONLD::debug	= $debug;
 our $PATTERN;
 if ($debug) {
-	$PATTERN = qr/tpr06/;
+	$PATTERN = qr/ttn02/;
 # 	$PATTERN = qr/gtw/;
 } else {
 	$PATTERN	= qr/./;
@@ -38,9 +38,10 @@ package MyJSONLD {
 
 	sub add_quad {
 		my $self	= shift;
-		my $triple	= shift;
+		my $quad	= shift;
+# 		Carp::confess unless (ref($quad) and $quad->does('Attean::API::Quad'));
 		my $ds		= shift;
-		$ds->add_quad($triple);
+		$ds->add_quad($quad);
 	}
 
 	sub new_dataset {
@@ -60,7 +61,10 @@ package MyJSONLD {
 	sub new_quad {
 		my $self	= shift;
 		foreach my $v (@_) {
-			Carp::confess "not a term object: $v" unless (ref($v));
+			unless (ref($v) and $v->does('Attean::API::Term')) {
+# 				warn "not a term object: $v";
+				return;
+			}
 		}
 		return quad(@_);
 	}
@@ -178,16 +182,19 @@ foreach my $t (@$tests) {
 	$j->boolean_values(0, 1);
 	if ($spec_v eq 'json-ld-1.0') {
 		diag("IGNORING JSON-LD-1.0-only test $id\n");
-	} elsif ($types{'jld:PositiveEvaluationTest'}) {
+	} elsif ($types{'jld:PositiveEvaluationTest'} or $types{'jld:PositiveSyntaxTest'}) {
 		note($id);
+		my $evalTest	= $types{'jld:PositiveEvaluationTest'};
 		my $jld			= MyJSONLD->new(base_iri => IRI->new($test_base));
 		my $infile		= File::Spec->catfile($path, $input);
-		my $outfile		= File::Spec->catfile($path, $expect);
 		my $data		= load_json($infile);
-		my $expected	= load_nq($outfile);
+		my $outfile		= File::Spec->catfile($path, $expect);
+
 		if ($debug) {
 			warn "Input file: $infile\n";
-			warn "Output file: $outfile\n";
+			if ($evalTest) {
+				warn "Output file: $outfile\n";
+			}
 			warn "INPUT:\n===============\n" . JSON->new->pretty->encode($data);
 		}
 		my $default_graph	= $jld->default_graph();
@@ -214,36 +221,41 @@ foreach my $t (@$tests) {
 			diag("Died: $@");
 		}
 
-		eval {
-			my $eqtest	= Attean::BindingEqualityTest->new();
-			my $ok	= ok($eqtest->equals($got, $expected), "$id: $name");
-			if ($debug) {
-				my @data	= (
-					['EXPECTED', $expected],
-					['OUTPUT__', $got],
-				);
-				my @files;
-				my $ser	= Attean->get_serializer('nquads')->new();
-				foreach my $d (@data) {
-					my ($name, $data)	= @$d;
-					$data->reset;
-					warn "=======================\n";
-					my $filename	= "/tmp/json-ld-$$-$name.out";
-					open(my $fh, '>', $filename) or die $!;
-					push(@files, $filename);
-					print {$fh} "# $name\n";
-					$ser->serialize_iter_to_io($fh, $data);
-					close($fh);
+		if ($evalTest) {
+			eval {
+				my $eqtest		= Attean::BindingEqualityTest->new();
+				my $expected	= load_nq($outfile);
+				my $ok	= ok($eqtest->equals($got, $expected), "$id: $name");
+				if ($debug) {
+					my @data	= (
+						['EXPECTED', $expected],
+						['OUTPUT__', $got],
+					);
+					my @files;
+					my $ser	= Attean->get_serializer('nquads')->new();
+					foreach my $d (@data) {
+						my ($name, $data)	= @$d;
+						$data->reset;
+						warn "=======================\n";
+						my $filename	= "/tmp/json-ld-$$-$name.out";
+						open(my $fh, '>', $filename) or die $!;
+						push(@files, $filename);
+						print {$fh} "# $name\n";
+						$ser->serialize_iter_to_io($fh, $data);
+						close($fh);
+					}
+					unless ($ok) {
+						system('/usr/local/bin/bbdiff', '--wait', '--resume', @files);
+					}
 				}
-				unless ($ok) {
-					system('/usr/local/bin/bbdiff', '--wait', '--resume', @files);
-				}
-			}
 
-		};
-		if ($@) {
-			fail("$id: $@");
-			next;
+			};
+			if ($@) {
+				fail("$id: $@");
+				next;
+			}
+		} else {
+			pass($id);
 		}
 	} elsif ($types{'jld:NegativeEvaluationTest'}){
 		diag("IGNORING NegativeEvaluationTest $id\n");
