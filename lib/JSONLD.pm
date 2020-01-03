@@ -2088,6 +2088,8 @@ RDF-related methods:
 
 =back
 
+See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
+
 =cut
 
 	sub to_rdf {
