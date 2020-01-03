@@ -15,11 +15,11 @@ use Moo;
 use Attean;
 use Type::Tiny::Role;
 
-our $debug	= 0;
+our $debug	= 1;
 $JSONLD::debug	= $debug;
 our $PATTERN;
 if ($debug) {
-	$PATTERN = qr/t0114/;
+	$PATTERN = qr/tpr06/;
 # 	$PATTERN = qr/gtw/;
 } else {
 	$PATTERN	= qr/./;
@@ -95,10 +95,21 @@ package MyJSONLD {
 		return langliteral($value, $lang);
 	}
 	
+	sub canonical_json {
+		my $class	= shift;
+		my $value	= shift;
+		my $j		= JSON->new->canonical(1)->allow_nonref(1);
+		my $v		= $j->decode($value);
+		return $j->encode($v);
+	}
+
 	sub new_dt_literal {
 		my $self	= shift;
 		my $value	= shift;
 		my $dt		= shift;
+		if ($dt eq 'http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON') {
+			$value	= $self->canonical_json($value);
+		}
 		return dtliteral($value, $dt);
 	}
 }
@@ -109,10 +120,25 @@ sub load_nq {
 	my $parser	= Attean->get_parser('nquads')->new();
 	my $iter	= $parser->parse_iter_from_io($fh);
 	my $miter	= $iter->materialize;
-	foreach my $st ($miter->elements) {
-		say $st->as_string;
-	}
-	return $miter;
+# 	foreach my $st ($miter->elements) {
+# 		say $st->as_string;
+# 	}
+	return $miter->map(sub {
+		# canonicalize rdf:JSON literals
+		my $st	= shift;
+		my $o	= $st->object;
+		if ($o->does('Attean::API::Literal')) {
+			my $dt	= $o->datatype;
+			if ($dt and $dt->value eq 'http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON') {
+				my $value	= MyJSONLD->canonical_json($o->value);
+				my $stclass	= ref($st);
+				my @nodes	= $st->values;
+				$nodes[2]	= MyJSONLD->new_dt_literal($value, 'http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON');
+				$st			= $stclass->new(@nodes);
+			}
+		}
+		return $st;
+	})->materialize;
 }
 
 sub load_json {
@@ -216,7 +242,7 @@ foreach my $t (@$tests) {
 
 		};
 		if ($@) {
-			fail($@);
+			fail("$id: $@");
 			next;
 		}
 	} elsif ($types{'jld:NegativeEvaluationTest'}){

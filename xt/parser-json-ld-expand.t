@@ -19,7 +19,7 @@ our $debug	= 0;
 $JSONLD::debug	= $debug;
 our $PATTERN;
 if ($debug) {
-	$PATTERN = qr/t0077/;
+	$PATTERN = qr/tpr06/;
 } else {
 	$PATTERN	= /./;
 }
@@ -34,14 +34,23 @@ sub load_json {
 
 sub _normalize {
 	# give array elements a predictable order (https://w3c.github.io/json-ld-api/tests/#json-ld-object-comparison)
-	my $data	= shift;
+	my $data			= shift;
+	my $preserve_order	= shift || 0;
 	return $data unless (ref($data));
 	if (ref($data) eq 'ARRAY') {
 		my $j		= JSON->new->canonical(1)->allow_nonref(1);
-		my @v	= sort { $j->encode($a) cmp $j->encode($b) } map { _normalize($_) } @$data;
+		my @v		= map { _normalize($_) } @$data;
+		unless ($preserve_order) {
+			@v	= sort { $j->encode($a) cmp $j->encode($b) } @v;
+		}
 		return [@v];
 	} elsif (ref($data) eq 'HASH') {
-		return { map { $_ => _normalize($data->{$_}) } (keys %$data) };
+		my %hash;
+		foreach my $k (keys %$data) {
+			my $preseve_order	= ($k eq '@list');
+			$hash{$k}	= _normalize($data->{$k}, $preseve_order);
+		}
+		return \%hash;
 	} else {
 		die "Unexpected ref type: " . ref($data);
 	}
