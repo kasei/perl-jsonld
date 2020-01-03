@@ -2764,6 +2764,8 @@ at L<https://github.com/kasei/perl-jsonld/issues>.
 
 =item L<https://www.w3.org/TR/json-ld-api/>
 
+=item L<MooX::Role::JSON_LD>
+
 =back
 
 =head1 AUTHOR
