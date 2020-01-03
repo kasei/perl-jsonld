@@ -163,7 +163,7 @@ foreach my $t (@$tests) {
 	next unless ($id =~ $PATTERN);
 
 	my $input	= $t->{'input'};
-	my $expect	= $t->{'expect'};
+	my $expect	= $t->{'expect'} // '';
 	my $name	= $t->{'name'};
 	my $purpose	= $t->{'purpose'};
 	my $options	= $t->{'option'} // {};
