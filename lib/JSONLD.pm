@@ -1077,7 +1077,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 			}
 			local($Data::Dumper::Indent)	= 1;
 			println "before 8: " . Data::Dumper->Dump([$activeCtx, $property_scoped_ctx], [qw'activeCtx property_scoped_ctx']) if $debug;
-			$activeCtx = $self->_4_1_2_ctx_processing($activeCtx, $property_scoped_ctx, %args); # 8
+			$activeCtx = $self->_4_1_2_ctx_processing($activeCtx, $property_scoped_ctx, %args, override_protected => 1); # 8
 			println "after 8: " . Data::Dumper->Dump([$activeCtx], ['activeCtx']) if $debug;
 		}
 		
