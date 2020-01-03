@@ -2567,11 +2567,15 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			$value	=~ s/(\d)0E/$1E/;
 			$value	=~ s/E[+]0+/E0/;
 			$value	=~ s/E0+([1-9])/E$1/;
-			$datatype	= 'http://www.w3.org/2001/XMLSchema#double';
+			unless ($datatype) {
+				$datatype	= 'http://www.w3.org/2001/XMLSchema#double';
+			}
 		} elsif (_is_integer($value) or (_is_numeric($value) and (defined($datatype) and $datatype eq 'http://www.w3.org/2001/XMLSchema#integer'))) {
 			println "11" if $debug;
 			$value	= sprintf('%d', $value);
-			$datatype	= 'http://www.w3.org/2001/XMLSchema#integer';
+			unless ($datatype) {
+				$datatype	= 'http://www.w3.org/2001/XMLSchema#integer';
+			}
 		}
 
 		if (not defined($datatype)) {
