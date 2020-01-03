@@ -1563,7 +1563,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 					}
 				}
 				
-				println(Data::Dumper->Dump([$expandedValue, $expandedProperty, $input_type], [qw'expandedValue expandedProperty input_type'])) if $debug;
+				println "before 13.4.16 " . Data::Dumper->Dump([$expandedValue, $expandedProperty, $input_type], [qw'expandedValue expandedProperty input_type']) if $debug;
 				unless (not(defined($expandedValue)) and $expandedProperty eq '@value' and $input_type ne '@json') {
 					println "13.4.16 setting " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 # 						println "$expandedProperty expanded value is " . Dumper($expandedValue) if $debug;
