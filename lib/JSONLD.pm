@@ -1008,7 +1008,6 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my $property_scoped_ctx;
 		my $property_scoped_ctx_defined	= 0;
 		my $tdef = $self->_ctx_term_defn($activeCtx, $activeProp);
-		warn Dumper($tdef);
 		if ($tdef and exists $tdef->{'@context'}) {
 			$property_scoped_ctx_defined	= 1;
 			my $lctx = $tdef->{'@context'};
