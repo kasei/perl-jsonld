@@ -161,9 +161,6 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my $i		= eval { IRI->new(value => $value) };
 		my $err		= $@;
 		my $is_iri	= not($@);
-		if ($@) {
-			Carp::confess $@;
-		}
 		return $is_iri;
 	}
 	
