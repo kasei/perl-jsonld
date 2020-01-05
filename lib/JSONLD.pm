@@ -4,7 +4,7 @@ JSONLD - A toolkit for interacting with JSON-LD data.
 
 =head1 VERSION
 
-This document describes JSONLD version 0.000_03
+This document describes JSONLD version 0.000_04
 
 =head1 SYNOPSIS
 
@@ -34,7 +34,7 @@ linked data.
 package JSONLD {
 	use v5.18;
 	use autodie;
-	our $VERSION	= '0.000_03';
+	our $VERSION	= '0.000_04';
 	use utf8;
 	use Moo;
 	use LWP;
