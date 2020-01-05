@@ -115,6 +115,13 @@ Returns the JSON-LD expansion of C<< $data >>.
 		return $expanded_output;
 	}
 	
+	sub _is_scalar {
+		my $v	= shift;
+		return 1 unless (ref($v));
+		return 1 if JSON::is_bool($v);
+		return 0;
+	}
+	
 	sub _is_string {
 		my $v	= shift;
 		return 0 unless defined($v);
@@ -494,7 +501,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 				if (not defined($value)) {
 					println "5.10.3" if $debug;
 					delete $result->{'@direction'};
-				} elsif (not ref($value)) {
+				} elsif (_is_string($value)) {
 					println "5.10.4 \@direction = $value" if $debug;
 					if ($value ne 'ltr' and $value ne 'rtl') {
 						die 'invalid base direction';
@@ -1012,7 +1019,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 			println "3 property-scoped context for property $activeProp: " . Data::Dumper->Dump([$property_scoped_ctx], [qw(context)]) if $debug;
 		}
 		
-		if (not(ref($element))) {
+		if (_is_scalar($element)) {
 			# 4
 			println "4" if $debug;
 			if (not(defined($activeProp)) or $activeProp eq '@graph') {
@@ -1122,12 +1129,16 @@ Returns the JSON-LD expansion of C<< $data >>.
 				$value	= [$value]; # 11.1
 			}
 			
+# 			my %tdefs	= map { $_ => $self->_ctx_term_defn($activeCtx, $_) } grep { _is_string($_) }@$value; # https://github.com/w3c/json-ld-api/issues/304
+			my %tdefs	= map { $_ => $self->_ctx_term_defn($type_scoped_ctx, $_) } grep { _is_string($_) }@$value; # https://github.com/w3c/json-ld-api/issues/304
 			foreach my $term (sort @$value) {
 				println "11.2 attempting with [$term]" if $debug;
-				if (not(ref($term))) {
-					my $tdef	= $self->_ctx_term_defn($activeCtx, $term);
-					if (my $c = $tdef->{'@context'}) {
+				if (_is_string($term)) {
+					my $tdef	= $tdefs{$term};
+# 					my $tdef	= $self->_ctx_term_defn($activeCtx, $term);
+					if (exists $tdef->{'@context'}) {
 						println "11.2" if $debug;
+						my $c = $tdef->{'@context'};
 						$activeCtx	= $self->_4_1_2_ctx_processing($activeCtx, $c, propagate => 0);
 						local($Data::Dumper::Indent)	= 1;
 						println "11.2 " . Data::Dumper->Dump([$activeCtx], ['activeCtx']) if $debug;
@@ -1315,7 +1326,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 					println "13.4.4" if $debug;
 					my $is_string = _is_string($value);
 					my $is_array	= ref($value) eq 'ARRAY';
-					my $is_array_of_strings	= ($is_array and all { not(ref($_)) } @$value);
+					my $is_array_of_strings	= ($is_array and all { _is_string($_) } @$value);
 					if (not($is_string) and not($is_array_of_strings)) {
 						println "13.4.4.1 invalid" if $debug;
 						die 'invalid type value';
@@ -1389,7 +1400,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 						if ($self->processing_mode eq 'json-ld-1.0') {
 							die 'invalid value object value';
 						}
-					} elsif (not (not(ref($value)) or not defined($value))) { # "if value is not a scalar or null, an invalid value object value error has been detected"
+					} elsif (not (_is_scalar($value) or not defined($value))) { # "if value is not a scalar or null, an invalid value object value error has been detected"
 						println "13.4.7.2 " .  Data::Dumper->Dump([$value], ['*value']) if $debug; # NOTE: the language here is ambiguous: "if value is not a scalar or null"
 						die 'invalid value object value';
 					} else {
@@ -2034,7 +2045,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		if (exists($tdef->{'type_mapping'}) and $tm ne '@id' and $tm ne '@vocab' and $tm ne '@none') {
 			println "4" if $debug;
 			$result->{'@type'}	= $tm; # 4
-		} elsif (_is_string($value)) { # not(ref($value))) {
+		} elsif (_is_string($value)) {
 			println "5" if $debug;
 			println "5.1" if $debug;
 			my $language	= (exists $tdef->{'language_mapping'}) ? $tdef->{'language_mapping'} : $activeCtx->{'@language'}; # 5.1
@@ -2558,7 +2569,13 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			$datatype	= 'http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON';
 		}
 		
-		println "9 TODO bool? " . Data::Dumper->Dump([$value], ['value']) if $debug;
+		if (JSON::is_bool($value)) {
+			println "9" if $debug;
+			$value	= $value ? 'true' : 'false';
+			unless ($datatype) {
+				$datatype	= 'http://www.w3.org/2001/XMLSchema#boolean';
+			}
+		}
 		
 		if (_is_numeric($value) and (not(_is_integer($value)) or (defined($datatype) and $datatype eq 'http://www.w3.org/2001/XMLSchema#double'))) {
 			println "10" if $debug;
