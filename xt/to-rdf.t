@@ -15,11 +15,11 @@ use Moo;
 use Attean;
 use Type::Tiny::Role;
 
-our $debug	= 1;
+our $debug	= 0;
 $JSONLD::debug	= $debug;
 our $PATTERN;
 if ($debug) {
-	$PATTERN = qr/ttn02/;
+	$PATTERN = qr/wf06/;
 # 	$PATTERN = qr/gtw/;
 } else {
 	$PATTERN	= qr/./;
@@ -39,7 +39,6 @@ package MyJSONLD {
 	sub add_quad {
 		my $self	= shift;
 		my $quad	= shift;
-# 		Carp::confess unless (ref($quad) and $quad->does('Attean::API::Quad'));
 		my $ds		= shift;
 		$ds->add_quad($quad);
 	}
@@ -102,7 +101,7 @@ package MyJSONLD {
 	sub canonical_json {
 		my $class	= shift;
 		my $value	= shift;
-		my $j		= JSON->new->canonical(1)->allow_nonref(1);
+		my $j		= JSON->new->canonical(1);
 		my $v		= $j->decode($value);
 		return $j->encode($v);
 	}
@@ -149,7 +148,6 @@ sub load_json {
 	my $file	= shift;
 	open(my $fh, '<', $file);
 	my $j	= JSON->new();
-	$j->boolean_values(0, 1);
 	return $j->decode(do { local($/); <$fh> });
 }
 
@@ -169,6 +167,7 @@ foreach my $t (@$tests) {
 	my $options	= $t->{'option'} // {};
 	my $_base	= $options->{'base'};
 	my $spec_v	= $options->{'specVersion'} // '';
+	my $genRDF	= $options->{'produceGeneralizedRdf'} // 0;
 	my @types	= @{ $t->{'@type'} };
 	my %types	= map { $_ => 1 } @types;
 
@@ -178,12 +177,13 @@ foreach my $t (@$tests) {
 	} else {
 		$test_base	= IRI->new(value => $input, base => $base)->abs;
 	}
-	my $j		= JSON->new->canonical(1)->allow_nonref(1);
-	$j->boolean_values(0, 1);
+	my $j		= JSON->new->canonical(1);
 	if ($spec_v eq 'json-ld-1.0') {
 		diag("IGNORING JSON-LD-1.0-only test $id\n");
+	} elsif ($genRDF) {
+		diag("IGNORING test producing Generalized RDF: $id\n");
 	} elsif ($types{'jld:PositiveEvaluationTest'} or $types{'jld:PositiveSyntaxTest'}) {
-		note($id);
+		note($id) if $debug;
 		my $evalTest	= $types{'jld:PositiveEvaluationTest'};
 		my $jld			= MyJSONLD->new(base_iri => IRI->new($test_base));
 		my $infile		= File::Spec->catfile($path, $input);
@@ -225,7 +225,7 @@ foreach my $t (@$tests) {
 			eval {
 				my $eqtest		= Attean::BindingEqualityTest->new();
 				my $expected	= load_nq($outfile);
-				my $ok	= ok($eqtest->equals($got, $expected), "$id: $name");
+				my $ok			= ok($eqtest->equals($got, $expected), "$id: $name");
 				if ($debug) {
 					my @data	= (
 						['EXPECTED', $expected],
@@ -255,7 +255,7 @@ foreach my $t (@$tests) {
 				next;
 			}
 		} else {
-			pass($id);
+			pass("$id: PositiveSyntaxTest");
 		}
 	} elsif ($types{'jld:NegativeEvaluationTest'}){
 		diag("IGNORING NegativeEvaluationTest $id\n");

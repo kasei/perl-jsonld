@@ -19,16 +19,17 @@ our $debug	= 0;
 $JSONLD::debug	= $debug;
 our $PATTERN;
 if ($debug) {
-	$PATTERN = qr/tpr06/;
+	$PATTERN = qr/tpr18/;
 } else {
 	$PATTERN	= /./;
 }
+
+my $REPORT_NEGATIVE_TESTS	= 0;
 
 sub load_json {
 	my $file	= shift;
 	open(my $fh, '<', $file);
 	my $j	= JSON->new();
-	$j->boolean_values(0, 1);
 	return $j->decode(do { local($/); <$fh> });
 }
 
@@ -38,7 +39,7 @@ sub _normalize {
 	my $preserve_order	= shift || 0;
 	return $data unless (ref($data));
 	if (ref($data) eq 'ARRAY') {
-		my $j		= JSON->new->canonical(1)->allow_nonref(1);
+		my $j		= JSON->new->canonical(1);
 		my @v		= map { _normalize($_) } @$data;
 		unless ($preserve_order) {
 			@v	= sort { $j->encode($a) cmp $j->encode($b) } @v;
@@ -67,7 +68,7 @@ foreach my $t (@$tests) {
 	next unless ($id =~ $PATTERN);
 	
 	my $input	= $t->{'input'};
-	my $expect	= $t->{'expect'};
+	my $expect	= $t->{'expect'} // '';
 	my $name	= $t->{'name'};
 	my $purpose	= $t->{'purpose'};
 	my $options	= $t->{'option'} // {};
@@ -86,50 +87,61 @@ foreach my $t (@$tests) {
 	} else {
 		$test_base	= IRI->new(value => $input, base => $base)->abs;
 	}
-	my $j		= JSON->new->canonical(1)->allow_nonref(1);
-	$j->boolean_values(0, 1);
+	my $j		= JSON->new->canonical(1);
+	note($id) if $debug;
 	if ($spec_v eq 'json-ld-1.0') {
 		diag("IGNORING JSON-LD-1.0-only test $id\n");
-	} elsif ($types{'jld:PositiveEvaluationTest'}) {
-		note($id);
+	} elsif ($types{'jld:PositiveEvaluationTest'} or $types{'jld:NegativeEvaluationTest'}) {
+		my $positive	= $types{'jld:PositiveEvaluationTest'};
 		my $jld			= JSONLD->new(base_iri => IRI->new($test_base));
 		my $infile		= File::Spec->catfile($path, $input);
 		my $outfile		= File::Spec->catfile($path, $expect);
 		my $data		= load_json($infile);
-		my $expected	= _normalize($j->encode(load_json($outfile)));
 		if ($debug) {
 			warn "Input file: $infile\n";
 			warn "INPUT:\n===============\n" . JSON->new->pretty->encode($data); # Dumper($data);
 		}
 		my $expanded	= eval { $jld->expand($data, %args) };
 		if ($@) {
-			diag("Died: $@");
-		}
-		my $got			= _normalize($j->encode($expanded));
-		if ($debug) {
-			my @data	= (
-				['EXPECTED', $expected],
-				['OUTPUT__', $got],
-			);
-			my @files;
-			foreach my $d (@data) {
-				my ($name, $data)	= @$d;
-				warn "=======================\n";
-				my $filename	= "/tmp/json-ld-$$-$name.out";
-				open(my $fh, '>', $filename) or die $!;
-				push(@files, $filename);
-				my $out	= Data::Dumper->Dump([$j->decode($data)], ["*$name"]);
-				warn $out;
-				print {$fh} $out;
-				close($fh);
+			if ($positive) {
+				fail("$id: $@")
+			} else {
+				if ($REPORT_NEGATIVE_TESTS) {
+					pass("$id: NegativeEvaluationTest");
+				}
 			}
-			unless ($got eq $expected) {
-				system('/usr/local/bin/bbdiff', '--wait', '--resume', @files);
+		} else {
+			my $got			= _normalize($j->encode($expanded));
+			if ($positive) {
+				my $expected	= _normalize($j->encode(load_json($outfile)));
+				if ($debug) {
+					my @data	= (
+						['EXPECTED', $expected],
+						['OUTPUT__', $got],
+					);
+					my @files;
+					foreach my $d (@data) {
+						my ($name, $data)	= @$d;
+						warn "=======================\n";
+						my $filename	= "/tmp/json-ld-$$-$name.out";
+						open(my $fh, '>', $filename) or die $!;
+						push(@files, $filename);
+						my $out	= Data::Dumper->Dump([$j->decode($data)], ["*$name"]);
+						warn $out;
+						print {$fh} $out;
+						close($fh);
+					}
+					unless ($got eq $expected) {
+						system('/usr/local/bin/bbdiff', '--wait', '--resume', @files);
+					}
+				}
+				is($got, $expected, "$id: $name");
+			} else {
+				if ($REPORT_NEGATIVE_TESTS) {
+					fail("$id: expected failure but found success");
+				}
 			}
 		}
-		is($got, $expected, "$id: $name");
-	} elsif ($types{'jld:NegativeEvaluationTest'}){
-		diag("IGNORING NegativeEvaluationTest $id\n");
 	} else {
 		diag("Not a recognized evaluation test: " . Dumper(\@types));
 		next;
