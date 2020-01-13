@@ -1048,7 +1048,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 				# 5.2
 				println "5.2" if $debug;
 				println "5.2.1" if $debug;
-				my $expandedItem	= $self->_5_1_2_expansion($activeCtx, $activeProp, $item); # 5.2.1
+				my $expandedItem	= $self->_5_1_2_expansion($activeCtx, $activeProp, $item, fromMap => $fromMap); # 5.2.1
 				println "5.2.1 expanded item = " . Dumper($expandedItem) if $debug;
 				
 				# NOTE: 5.2.2 "container mapping" is in the term definition for active property, right? The text omits the term definition reference.
@@ -1080,9 +1080,10 @@ Returns the JSON-LD expansion of C<< $data >>.
 
 		if (my $prevCtx = $activeCtx->{'previous_context'}) {
 			unless ($fromMap) {
-				unless (exists $element->{'@value'}) {
-					my @keys	= keys %$element;
-					unless (scalar(@keys) == 1 and $keys[0] eq '@id') {
+				my @keys	= keys %$element;
+				my %expandedKeys	= map { $_ => 1 } map { $self->_5_2_2_iri_expansion($activeCtx, $_) } @keys;
+				unless (exists $expandedKeys{'@value'}) {
+					unless (scalar(@keys) == 1 and $self->_5_2_2_iri_expansion($activeCtx, $keys[0]) eq '@id') {
 						println "7" if $debug;
 						$activeCtx	= $prevCtx; # 7
 					}
@@ -1364,6 +1365,10 @@ Returns the JSON-LD expansion of C<< $data >>.
 					println "13.4.5" if $debug;
 					my $v	= $self->_5_1_2_expansion($activeCtx, '@graph', $value, frameExpansion => $frameExpansion, ordered => $ordered);
 					$expandedValue	= (ref($v) eq 'ARRAY') ? $v : [$v];
+					println("========================================================================") if $debug;
+					println("========================================================================") if $debug;
+					println("========================================================================") if $debug;
+					println(Dumper($expandedValue)) if $debug;
 					println "13.4.5 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 				}
 
@@ -1474,6 +1479,10 @@ Returns the JSON-LD expansion of C<< $data >>.
 
 					println "13.4.11.2" if $debug;
 					$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered);
+					if (ref($expandedValue) ne 'ARRAY') {
+						# https://github.com/w3c/json-ld-api/issues/310
+						$expandedValue	= [$expandedValue];
+					}
 					println "13.4.11 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 				}
 
@@ -1571,7 +1580,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 				
 				println "before 13.4.16 " . Data::Dumper->Dump([$expandedValue, $expandedProperty, $input_type], [qw'expandedValue expandedProperty input_type']) if $debug;
 				unless (not(defined($expandedValue)) and $expandedProperty eq '@value' and $input_type ne '@json') {
-					println "13.4.16 setting " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
+					println "13.4.16 setting " . Data::Dumper->Dump([$expandedValue], [$expandedProperty]) if $debug;
 # 						println "$expandedProperty expanded value is " . Dumper($expandedValue) if $debug;
 					$result->{$expandedProperty}	= $expandedValue; # https://github.com/w3c/json-ld-api/issues/270
 					println "13.4.16 resulting in " . Data::Dumper->Dump([$result], ['*result']) if $debug;
@@ -1784,7 +1793,6 @@ Returns the JSON-LD expansion of C<< $data >>.
 				println "13.11 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 			}
 
-# 				if (exists $container_mapping->{'@graph'}) {
 			if ($self->_cm_contains($container_mapping, '@graph')) {
 				# 13.12
 				println "13.12" if $debug;
@@ -1902,7 +1910,14 @@ Returns the JSON-LD expansion of C<< $data >>.
 					println "14.2.1 " . Data::Dumper->Dump([$nested_value], ['*invalid_nest_value']) if $debug;
 					die 'invalid @nest value'; # 14.2.1
 				}
-			
+				
+				my @keys	= keys %$nested_value;
+				my %expandedKeys	= map { $_ => 1 } map { $self->_5_2_2_iri_expansion($activeCtx, $_) } @keys;
+				if (exists $expandedKeys{'@value'}) {
+					println "14.2.1 " . Data::Dumper->Dump([$nested_value], ['*invalid_nest_value']) if $debug;
+					die 'invalid @nest value';
+				}
+				
 				println "14.2.2 ENTER    =================> call to _5_1_2_expansion_step_13" if $debug;
 				my $__indent_2	= indent();
 				$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $nested_value); # 14.2.2
