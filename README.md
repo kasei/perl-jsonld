@@ -20,7 +20,7 @@ Prints the JSON-LD 1.1 *compaction* of the data in `input.jsonld` to standard ou
 
     % jsonld-nq input.jsonld
 
-Prints the JSON-LD 1.1 N-Quads serialization of the data in `input.jsonld` to standard out.
+Prints the JSON-LD 1.1 *deserialization* of the data in `input.jsonld` to standard out in the N-Quads format.
 
 ### JSON-LD Perl API
 
