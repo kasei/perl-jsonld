@@ -6,13 +6,16 @@ use utf8;
 use File::Spec;
 use JSON;
 use JSONLD;
+use Attean;
+use open ':std', ':encoding(UTF-8)';
 
 package MyJSONLD {
-	use v5.18;
+	use v5.14;
 	use autodie;
 	use Moo;
 	use Attean::RDF;
 	extends 'JSONLD';
+	use namespace::clean;
 	
 	sub default_graph {
 		return iri('http://attean.example.org/default-graph');
@@ -85,7 +88,6 @@ package MyJSONLD {
 my $data;
 my $base;
 my $j		= JSON->new->pretty(1)->canonical(1)->allow_nonref(1);
-$j->boolean_values(0, 1);
 while (scalar(@ARGV) and $ARGV[0] =~ /^-(\w+)$/) {
 	my $flag	= $1;
 	shift;
@@ -96,7 +98,7 @@ while (scalar(@ARGV) and $ARGV[0] =~ /^-(\w+)$/) {
 
 if (scalar(@ARGV)) {
 	my $file	= shift;
-	open(my $fh, '<', $file);
+	open(my $fh, '<:utf8', $file);
 	$data	= $j->decode(do { local($/); <$fh> });
 	$base	= 'file://' . File::Spec->rel2abs($file);
 } else {
@@ -104,7 +106,6 @@ if (scalar(@ARGV)) {
 	$base	= 'http://base.example.org/';
 }
 
-$j->boolean_values(0, 1);
 my $jld			= MyJSONLD->new(base_iri => IRI->new($base));
 my $default_graph	= $jld->default_graph();
 my $iter			= eval {
