@@ -1,6 +1,6 @@
 # JSONLD
 
-## A toolkit for interacting with JSON-LD data.
+## A Perl toolkit for interacting with JSON-LD data.
 
 ## VERSION
 
