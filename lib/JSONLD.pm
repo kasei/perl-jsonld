@@ -61,7 +61,7 @@ package JSONLD {
 	has 'identifier_map' => (is => 'rw', default => sub { +{} });
 	has 'next_identifier_id' => (is => 'rw', default => 0);
 	has 'default_language' => (is => 'rw');
-	has 'default_base_language' => (is => 'rw');
+	has 'default_base_direction' => (is => 'rw');
 	
 	our $debug		= 0;
 	my %keywords	= map { $_ => 1 } qw(: @base @container @context @direction @graph @id @import @included @index @json @language @list @nest @none @prefix @propagate @protected @reverse @set @type @value @version @vocab);
@@ -100,18 +100,24 @@ Returns the JSON-LD expansion of C<< $data >>.
 			local($debug)	= 0;
 			$self->expand($d, ordered => 0);
 		};
-		println(Data::Dumper->Dump([$expanded_input], ['expanded_input'])) if $debug;
+		println(Data::Dumper->Dump([$context, $expanded_input], [qw(context expanded_input)])) if $debug;
 		
 		my $ctx		= {
 			'@base' => $self->base_iri->abs, # TODO: not sure this follows the spec, but it's what makes test t0089 pass
 		};
 		if (ref($context) eq 'HASH' and exists $context->{'@context'}) {
+			local($debug)	= 0;
 			$ctx	= $self->_4_1_2_ctx_processing($ctx, $context->{'@context'});
 		}
 		
+		my $inverseCtx	= $self->_4_3_inverse_context_creation($ctx);
+		
 # 		warn "Compacting...";
-		return $self->_compact($ctx, {}, undef, $expanded_input, %args);
-		die;
+		my $c	= $self->_compact($ctx, $inverseCtx, undef, $expanded_input, %args);
+		if (scalar(%{ $context->{'@context'} })) {
+			$c->{'@context'}	= $context->{'@context'};
+		}
+		return $c;
 	}
 	
 	sub _compact {
@@ -300,6 +306,24 @@ Returns the JSON-LD expansion of C<< $data >>.
 			}
 		} else {
 			return (defined($container_mapping) and $container_mapping eq $value);
+		}
+	}
+	
+	sub _cm_contains_only {
+		my $self	= shift;
+		my $container_mapping	= shift;
+		my @values	= @_;
+		if (not defined($container_mapping)) {
+			return (scalar(@values) == 0);
+		}
+		if (ref($container_mapping)) {
+			Carp::cluck unless (ref($container_mapping) eq 'ARRAY');
+			my $cms	= join('', sort @$container_mapping);
+			my $vs	= join('', sort @values);
+			return ($cms eq $vs);
+		} else {
+			return 0 unless (scalar(@values) == 1);
+			return $values[0] eq $container_mapping;
 		}
 	}
 	
@@ -1914,7 +1938,8 @@ Returns the JSON-LD expansion of C<< $data >>.
 				println "13.11 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 			}
 
-			if ($self->_cm_contains($container_mapping, '@graph')) {
+			if ($self->_cm_contains_only($container_mapping, '@graph') or $self->_cm_contains_only($container_mapping, '@graph', '@set')) {
+				# https://github.com/w3c/json-ld-api/issues/311
 				# 13.12
 				println "13.12" if $debug;
 				if (ref($expandedValue) ne 'ARRAY') {
@@ -1922,17 +1947,9 @@ Returns the JSON-LD expansion of C<< $data >>.
 				}
 				my @values;
 				foreach my $ev (@$expandedValue) {
-					println "is a graph object? " . Data::Dumper->Dump([$ev], ['*ev']) if $debug;
-					if (not $self->_is_graph_object($ev)) {
-						println "no" if $debug;
-						# 13.12.1
-						println "13.12.1" if $debug;
-						my $av	= (ref($ev) eq 'ARRAY') ? $ev : [$ev];
-						push(@values, {'@graph' => $av});
-					} else {
-						println "yes" if $debug;
-						push(@values, $ev);
-					}
+					println "13.12.1" if $debug;
+					my $av	= (ref($ev) eq 'ARRAY') ? $ev : [$ev];
+					push(@values, {'@graph' => $av});
 				}
 				$expandedValue	= \@values;
 				println "13.12 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
@@ -2215,10 +2232,10 @@ Returns the JSON-LD expansion of C<< $data >>.
 			println "ENTER    =================> _6_1_2_compaction('$activeProp')" if $debug;
 		}
 		my $__indent	= indent();
-		local($Data::Dumper::Indent)	= 0;
-		println(Data::Dumper->Dump([$activeCtx], ['activeCtx'])) if $debug;
-		println(Data::Dumper->Dump([$activeProp], ['activeProp'])) if $debug;
-		println(Data::Dumper->Dump([$element], ['element'])) if $debug;
+# 		local($Data::Dumper::Indent)	= 0;
+# 		println(Data::Dumper->Dump([$activeCtx], ['activeCtx'])) if $debug;
+# 		println(Data::Dumper->Dump([$activeProp], ['activeProp'])) if $debug;
+# 		println(Data::Dumper->Dump([$element], ['element'])) if $debug;
 		my %args		= @_;
 		my $compactArrays	= $args{compactArrays} // 0;
 		my $ordered		= $args{ordered} // 0;
@@ -2227,7 +2244,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my $type_scoped_ctx	= clone($activeCtx);
 		
 		if (_is_scalar($element)) {
-			println "2" if $debug;
+			println "2 returning scalar " . Data::Dumper->Dump([$element], [qw(element)]) if $debug;
 			return $element;
 		}
 		
@@ -2246,15 +2263,17 @@ Returns the JSON-LD expansion of C<< $data >>.
 				}
 			}
 			
-			if (scalar(@$result) == 1 and ($activeProp // '') ne '@graph' and ($activeProp // '') ne '@set' and $compactArrays) {
-				# TODO: spec text mixes conjunction and disjunction in this step:
-				# "If result contains only one item (it has a length of 1), active property is not @graph or @set, or the container mapping for active property in active context does not include @list or @set, and compactArrays is true..."
-				# Need to handle the clause: "the container mapping for active property in active context does not include @list or @set"
+			my $not_graph	= ($activeProp // '') ne '@graph';
+			my $not_set		= ($activeProp // '') ne '@set';
+			my $tdef		= $self->_ctx_term_defn($activeCtx, $activeProp);
+			my $container_mapping	= $tdef->{'container_mapping'};
+			if (scalar(@$result) == 1 and (($not_graph and $not_set) or (not($self->_cm_contains_any($container_mapping, '@list', '@set')) and $compactArrays))) {
+				# https://github.com/w3c/json-ld-api/issues/334
 				println "3.3" if $debug;
 				$result	= $result->[0];
 			}
 			
-			println "3.4" if $debug;
+			println "3.4 returning " . Data::Dumper->Dump([$result], [qw(result)]) if $debug;
 			return $result;
 		}
 		
@@ -2284,7 +2303,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 			my $v	= $self->_6_3_value_compaction($activeCtx, $inverseCtx, $activeProp, $element);
 			my $tm	= $tdef->{'type_mapping'} // '';
 			if (_is_scalar($v) or $tm eq '@json') {
-				println "7" if $debug;
+				println "7 returning " . Data::Dumper->Dump([$v], [qw(result)]) if $debug;
 				return $v;
 			}
 		}
@@ -2292,7 +2311,9 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my $container_mapping	= $tdef->{'container_mapping'};
 		if (_is_list_object($element) and $self->_cm_contains($container_mapping, '@list')) {
 			println "8" if $debug;
-			return $self->_6_1_2_compaction($activeCtx, $inverseCtx, $activeProp, $element->{'@list'}, %args);
+			my $result	= $self->_6_1_2_compaction($activeCtx, $inverseCtx, $activeProp, $element->{'@list'}, %args);
+			println "8 returning " . Data::Dumper->Dump([$result], [qw(result)]) if $debug;
+			return $result;
 		}
 
 		println "9" if $debug;
@@ -2319,7 +2340,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		}
 		
 		println "12" if $debug;
-		foreach my $expandedProperty (sort %$element) {
+		foreach my $expandedProperty (sort keys %$element) {
 			my $expandedValue	= $element->{$expandedProperty};
 			println "12 [$expandedProperty]" if $debug;
 
@@ -2414,6 +2435,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 			foreach my $expandedItem (@$expandedValue) {
 				println "12.8.1" if $debug;
 				my $item_active_property	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $expandedProperty, value => $expandedItem, vocab => 1, 'reverse' => $insideReverse);
+				println(Data::Dumper->Dump([$item_active_property], ['item_active_property'])) if $debug;
 				
 				println "12.8.2" if $debug;
 				my $tdef	= $self->_ctx_term_defn($activeCtx, $item_active_property);
@@ -2437,7 +2459,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 # 					$container	= (grep { $_ ne '@set' } @$container_mapping)[0];
 				}
 				
-				println "12.8.4" if $debug;
+				println "12.8.4 " . Data::Dumper->Dump([$container_mapping], [qw(container_mapping)]) if $debug;
 				my $as_array	= ($self->_cm_contains($container_mapping, '@set') or $item_active_property eq '@graph' or $item_active_property eq '@list');
 				
 				println "12.8.5" if $debug;
@@ -2532,9 +2554,10 @@ Returns the JSON-LD expansion of C<< $data >>.
 					}
 				}
 			}
+			println "after this 12 loop body " . Data::Dumper->Dump([$result], [qw(result)]) if $debug;
 		}
 
-		println "13" if $debug;
+		println "13 returning " . Data::Dumper->Dump([$result], [qw(result)]) if $debug;
 		return $result;
 		
 	}
@@ -2548,6 +2571,13 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my $value		= $args{'value'} || 0;
 		my $vocab		= $args{'vocab'} || 0;
 		my $reverse		= $args{'reverse'} || 0;
+		{
+			no warnings 'uninitialized';
+			println "ENTER    =================> _6_2_2_iri_compaction('$var')" if $debug;
+			println(Data::Dumper->Dump([$activeCtx], ['activeCtx'])) if $debug;
+			println(Data::Dumper->Dump([$inverseCtx], ['inverseCtx'])) if $debug;
+		}
+		my $__indent	= indent();
 		
 		unless (defined($var)) {
 			println "1" if $debug;
@@ -2630,6 +2660,11 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my $inverseCtx	= shift;
 		my $activeProp	= shift;
 		my $value		= shift;
+		{
+			no warnings 'uninitialized';
+			println "ENTER    =================> _6_3_value_compaction('$activeProp')" if $debug;
+		}
+		my $__indent	= indent();
 		
 		println "1" if $debug;
 		my $result	= $value;
@@ -2639,7 +2674,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		my $language	= $tdef->{'language_mapping'} // $self->default_language;
 		
 		println "3" if $debug;
-		my $direction	= $tdef->{'direction_mapping'} // $self->default_base_language;
+		my $direction	= $tdef->{'direction_mapping'} // $self->default_base_direction;
 
 		my @keys				= grep { $_ ne '@id' and $_ ne '@index' } keys %$value;
 		my $type_mapping		= $tdef->{'type_mapping'} // '';
