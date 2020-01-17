@@ -19,10 +19,12 @@ perl_version	'5.014';
 requires		'Clone'						=> 0;
 requires		'Debug::ShowStuff'			=> 0;
 requires		'IRI'						=> 0.010;
+requires		'List::Util'				=> 1.33;
 requires		'JSON'						=> 4.02;
 requires		'LWP'						=> 0;
 requires		'LWP::Protocol::https'		=> 0;
 requires		'Moo'						=> 0;
+requires		'namespace::clean'			=> 0;
 
 resources(
 	'homepage'		=> "http://search.cpan.org/dist/JSONLD/",
