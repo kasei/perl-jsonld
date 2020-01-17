@@ -405,7 +405,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		confess "Bad active context type in _4_1_2_ctx_processing: " . Dumper($activeCtx) unless (ref($activeCtx) eq 'HASH');
 		if (ref($localCtx) eq 'HASH' and exists $localCtx->{'@propagate'}) {
 			println "2" if $debug;
-			$propagate	= ($localCtx->{'@propagate'} eq 'true'); # 2
+			$propagate	= (!!$localCtx->{'@propagate'}); # 2
 		}
 		
 		if (not($propagate) and not exists $result->{'previous_context'}) {
@@ -633,7 +633,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 				}
 				
 				my $p	= $context->{'@propagate'};
-				if ($p ne '1' and $p ne '0') { # boolean true or false
+				if ($p ne '1' and $p ne '0' and ref($p) ne 'JSON::PP::Boolean') { # boolean true or false
 					println "5.11.2" if $debug;
 					die 'invalid @propagate value';
 				}
