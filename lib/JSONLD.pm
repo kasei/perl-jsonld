@@ -308,25 +308,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 			return (defined($container_mapping) and $container_mapping eq $value);
 		}
 	}
-	
-	sub _cm_contains_only {
-		my $self	= shift;
-		my $container_mapping	= shift;
-		my @values	= @_;
-		if (not defined($container_mapping)) {
-			return (scalar(@values) == 0);
-		}
-		if (ref($container_mapping)) {
-			Carp::cluck unless (ref($container_mapping) eq 'ARRAY');
-			my $cms	= join('', sort @$container_mapping);
-			my $vs	= join('', sort @values);
-			return ($cms eq $vs);
-		} else {
-			return 0 unless (scalar(@values) == 1);
-			return $values[0] eq $container_mapping;
-		}
-	}
-	
+
 	sub _cm_contains_any {
 		my $self	= shift;
 		my $container_mapping	= shift;
@@ -2107,7 +2089,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 				println "13.11 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 			}
 
-			if ($self->_cm_contains_only($container_mapping, '@graph') or $self->_cm_contains_only($container_mapping, '@graph', '@set')) {
+			if ($self->_cm_contains($container_mapping, '@graph') and not($self->_cm_contains($container_mapping, '@id')) and not($self->_cm_contains($container_mapping, '@index'))) {
 				# https://github.com/w3c/json-ld-api/issues/311
 				# 13.12
 				println "13.12" if $debug;
