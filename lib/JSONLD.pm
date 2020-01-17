@@ -1124,7 +1124,176 @@ Returns the JSON-LD expansion of C<< $data >>.
 	sub _4_3_inverse_context_creation {
 		my $self		= shift;
 		my $activeCtx	= shift;
-		die '_4_3_inverse_context_creation unimplemented';
+		{
+			no warnings 'uninitialized';
+			println "ENTER    =================> _4_3_inverse_context_creation" if $debug;
+		}
+		my $__indent	= indent();
+		println "1" if $debug;
+		my $result	= {};
+		
+		println "2" if $debug;
+		my $default_language	= '@none';
+		if (exists $activeCtx->{'@language'}) {
+			$default_language	= lc($activeCtx->{'@language'});
+		}
+		
+		println "3 TODO" if $debug;
+		foreach my $term (sort { length($a) <=> length($b) || $a cmp $b } keys %{ $activeCtx->{'terms'} }) {
+			my $tdef	= $self->_ctx_term_defn($activeCtx, $term);
+			if (not defined($tdef)) {
+				println "3.1" if $debug;
+				next;
+			}
+			
+			println "3.2" if $debug;
+			my $container	= '@none';
+			my $container_mapping	= $tdef->{'container_mapping'} || [];
+			if (scalar(@$container_mapping)) {
+				$container	= join('', sort @$container_mapping);
+			}
+			
+			println "3.3" if $debug;
+			my $var	= $tdef->{'iri_mapping'};
+			
+			if (not exists $result->{$var}) {
+				println "3.4" if $debug;
+				$result->{$var}	= {};
+			}
+			
+			println "3.5" if $debug;
+			my $container_map	= $result->{$var};
+			
+			if (not exists $container_map->{$container}) {
+				println "3.6" if $debug;
+				$container_map->{$container}	= {
+					'@language'	=> {},
+					'@type'		=> {},
+					'@any'		=> {
+						'@none'	=> $term
+					}
+				};
+			}
+			
+			println "3.7" if $debug;
+			my $type_language_map	= $container_map->{$container};
+			
+			println "3.8" if $debug;
+			my $type_map	= $type_language_map->{'@type'};
+			
+			if ($tdef->{'reverse'}) {
+				println "3.9" if $debug;
+				if (not exists $type_map->{'@reverse'}) {
+					println "3.9.1" if $debug;
+					$type_map->{'@reverse'}	= $term;
+				}
+			} elsif ($tdef->{'type_mapping'} eq '@none') {
+				println "3.10" if $debug;
+				println "3.10.1" if $debug;
+				my $language_map	= $type_language_map->{'@language'};
+				
+				if (not exists $language_map->{'@any'}) {
+					println "3.10.2" if $debug;
+					$language_map->{'@any'}	= $term;
+				}
+				
+				if (not exists $type_map->{'@any'}) {
+					println "3.10.3" if $debug;
+					$type_map->{'@any'}	= $term;
+				}
+			} elsif (exists $tdef->{'type_mapping'}) {
+				println "3.11" if $debug;
+				if (not exists $type_map->{$tdef->{'type_mapping'}}) {
+					println "3.11.1" if $debug;
+					$type_map->{$tdef->{'type_mapping'}}	= $term;
+				}
+			}
+			
+			println "3.12" if $debug;
+			my $language_map	= $type_language_map->{'@language'};
+			
+			my $lang_dir; # TODO: the spec says to create this in 3.13.1, but it's used at this level
+			if (exists $tdef->{'language_mapping'} and exists $tdef->{'direction_mapping'}) {
+				println "3.13" if $debug;
+				println "3.13.1" if $debug;
+				# my $lang_dir;
+
+				if (defined($tdef->{'language_mapping'}) and defined($tdef->{'direction_mapping'})) {
+					println "3.13.2" if $debug;
+					$lang_dir	= lc(join('_', @{ $tdef }{qw(language_mapping direction_mapping)}));
+				} elsif (defined($tdef->{'language_mapping'})) {
+					println "3.13.3" if $debug;
+					$lang_dir	= lc($tdef->{'language_mapping'});
+				} elsif (defined($tdef->{'direction_mapping'})) {
+					println "3.13.4" if $debug;
+					$lang_dir	= '_' . lc($tdef->{'direction_mapping'});
+				} else {
+					println "3.13.5" if $debug;
+					$lang_dir	= '@null';
+				}
+			}
+			
+			if (not exists $language_map->{$lang_dir}) {
+				println "3.14" if $debug;
+				$language_map->{$lang_dir}	= $term;
+			} elsif (exists $tdef->{'language_mapping'}) {
+				println "3.15" if $debug;
+				println "3.15.1" if $debug;
+				my $language	= (not defined($tdef->{'language_mapping'})) ? '@null' : lc($tdef->{'language_mapping'});
+
+				if (not exists $language_map->{$language}) {
+					println "3.15.2" if $debug;
+					$language_map->{$language}	= $term;
+				}
+			} elsif (exists $tdef->{'direction_mapping'}) {
+				println "3.16" if $debug;
+				println "3.16.1" if $debug;
+				my $direction	= (not defined $tdef->{'direction_mapping'}) ? '@none' : '_' . $tdef->{'direction_mapping'};
+
+				if (not exists $language_map->{$direction}) {
+					println "3.16.2" if $debug;
+					$language_map->{$direction}	= $term;
+				}
+			} elsif (exists $activeCtx->{'@direction'}) {
+				println "3.17" if $debug;
+				println "3.17.1" if $debug;
+				my $lang_dir	= lc(join('_', $self->default_language, $self->default_base_direction));
+				
+				if (not exists $language_map->{$lang_dir}) {
+					println "3.17.2" if $debug;
+					$language_map->{$lang_dir}	= $term;
+				}
+				
+				if (not exists $language_map->{'@none'}) {
+					println "3.17.3" if $debug;
+					$language_map->{'@none'}	= $term;
+				}
+				
+				if (not exists $type_map->{'@none'}) {
+					println "3.17.4" if $debug;
+					$type_map->{'@none'}	= $term;
+				}
+			} else {
+				println "3.18" if $debug;
+				if (not exists $language_map->{lc $default_language}) {
+					println "3.18.1" if $debug;
+					$language_map->{lc $default_language}	= $term;
+				}
+				
+				if (not exists $language_map->{'@none'}) {
+					println "3.18.2" if $debug;
+					$language_map->{'@none'}	= $term;
+				}
+
+				if (not exists $type_map->{'@none'}) {
+					println "3.18.3" if $debug;
+					$type_map->{'@none'}	= $term;
+				}
+			}
+		}
+
+		println "4" if $debug;
+		return $result;
 	}
 
 	sub _5_1_2_expansion {
