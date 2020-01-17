@@ -6,11 +6,11 @@ use utf8;
 use File::Spec;
 use JSON;
 use JSONLD;
+use open ':std', ':encoding(UTF-8)';
 
 my $data;
 my $base;
 my $j		= JSON->new->pretty(1)->canonical(1)->allow_nonref(1);
-$j->boolean_values(0, 1);
 while (scalar(@ARGV) and $ARGV[0] =~ /^-(\w+)$/) {
 	my $flag	= $1;
 	shift;
@@ -21,7 +21,7 @@ while (scalar(@ARGV) and $ARGV[0] =~ /^-(\w+)$/) {
 
 if (scalar(@ARGV)) {
 	my $file	= shift;
-	open(my $fh, '<', $file);
+	open(my $fh, '<:utf8', $file);
 	$data	= $j->decode(do { local($/); <$fh> });
 	$base	= 'file://' . File::Spec->rel2abs($file);
 } else {
