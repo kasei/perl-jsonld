@@ -1,4 +1,4 @@
-use v5.18;
+use v5.14;
 use autodie;
 use utf8;
 use Carp qw(confess);
@@ -12,14 +12,13 @@ use Data::Dumper;
 use JSONLD;
 
 use Moo;
-use Attean;
 use Type::Tiny::Role;
 
 our $debug	= 0;
 $JSONLD::debug	= $debug;
 our $PATTERN;
 if ($debug) {
-	$PATTERN = qr/tpr18/;
+	$PATTERN = qr/t0104/;
 } else {
 	$PATTERN	= /./;
 }

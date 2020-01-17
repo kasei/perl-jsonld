@@ -32,7 +32,7 @@ linked data.
 =cut
 
 package JSONLD {
-	use v5.18;
+	use v5.14;
 	use autodie;
 	our $VERSION	= '0.000_04';
 	use utf8;

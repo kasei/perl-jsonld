@@ -1,4 +1,4 @@
-use v5.18;
+use v5.14;
 use autodie;
 use utf8;
 use Carp qw(confess);
@@ -19,7 +19,7 @@ our $debug	= 0;
 $JSONLD::debug	= $debug;
 our $PATTERN;
 if ($debug) {
-	$PATTERN = qr/wf06/;
+	$PATTERN = qr/trt01/;
 # 	$PATTERN = qr/gtw/;
 } else {
 	$PATTERN	= qr/./;

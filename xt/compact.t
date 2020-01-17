@@ -1,4 +1,4 @@
-use v5.18;
+use v5.14;
 use autodie;
 use utf8;
 use Carp qw(confess);
@@ -12,7 +12,6 @@ use Data::Dumper;
 use JSONLD;
 
 use Moo;
-use Attean;
 use Type::Tiny::Role;
 
 our $debug	= 0;
