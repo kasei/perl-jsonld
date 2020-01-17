@@ -515,7 +515,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 					die 'invalid @import value';
 				}
 				
-				println "5.6.3" if $debug;
+				println "5.6.3 resolving \@import $value" if $debug;
 				my $import	= IRI->new(value => $value, base => $self->base_iri)->abs;
 				
 				println "5.6.4 loading $import" if $debug;
@@ -546,6 +546,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 				
 				println "5.6.8" if $debug;
 				%$context	= (%$import_context, %$context);
+				println(Data::Dumper->Dump([$context], ['context'])) if $debug;
 			}
 			
 			if (exists $context->{'@base'} and scalar(@$remote_contexts) == 0) {
@@ -1511,9 +1512,10 @@ Returns the JSON-LD expansion of C<< $data >>.
 						}
 					}
 					
-					if (exists $result->{'@include'}) {
+					if (exists $result->{'@included'}) {
+						# https://github.com/w3c/json-ld-api/issues/333
 						println "13.4.6.4" if $debug;
-						unshift(@$expandedValue, $result->{'@include'});
+						unshift(@$expandedValue, @{ $result->{'@included'} });
 					}
 					println "13.4.6 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 				} elsif ($expandedProperty eq '@value') {
@@ -2299,7 +2301,6 @@ Returns the JSON-LD expansion of C<< $data >>.
 		println "10" if $debug;
 		my $result	= {};
 		
-		
 		if (exists $element->{'@type'}) {
 			println "11" if $debug;
 			my @types	= @{ $element->{'@type'} };
@@ -2481,25 +2482,24 @@ Returns the JSON-LD expansion of C<< $data >>.
 						$compactedItem	= { $key => $compactedItem };
 						
 						if (exists $expandedItem->{'@id'}) {
-							# https://github.com/w3c/json-ld-api/issues/324
 							println "12.8.7.4.2" if $debug;
 							my $key	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, '@id', vocab => 1);
 							my $value	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $expandedItem->{'@id'});
-							$compactedItem->{$key}	= $value; # TODO: spec text doesn't specify if this is the right value to update
+							$compactedItem->{$key}	= $value;
 						}
 						
 						
 						if (exists $expandedItem->{'@index'}) {
-							# https://github.com/w3c/json-ld-api/issues/324
 							println "12.8.7.4.3" if $debug;
 							my $key	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, '@index', vocab => 1);
-							$compactedItem->{$key}	= $expandedItem->{'@index'}; # TODO: spec text doesn't specify if this is the right value to update
+							$compactedItem->{$key}	= $expandedItem->{'@index'};
 						}
 						
 						if ($as_array) {
 							println "12.8.7.4.4" if $debug;
 							$compactedItem	= [$compactedItem];
 						}
+						
 						
 						
 						println "12.8.7.4.5 TODO"; # if $debug;
@@ -2671,7 +2671,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 			}
 		} else {
 			# https://github.com/w3c/json-ld-api/issues/313
-			my $vlang		= $value->{'@language'} // '';
+			my $vlang				= $value->{'@language'} // '';
 			my $lang_both_undef		= (not(defined($value->{'@language'})) and not(defined($language)));
 			my $lang_same			= ($lang_both_undef or (lc($vlang) eq lc($language)));
 			my $lang_not_present	= ((not defined($language)) and (not exists $value->{'@language'}));
