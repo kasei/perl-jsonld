@@ -10,6 +10,7 @@ use File::Spec;
 use JSON qw(decode_json);
 use Data::Dumper;
 use JSONLD;
+use open ':std', ':encoding(UTF-8)';
 
 use Moo;
 use Attean;
@@ -19,7 +20,7 @@ our $debug	= 0;
 $JSONLD::debug	= $debug;
 our $PATTERN;
 if ($debug) {
-	$PATTERN = qr/trt01/;
+	$PATTERN = qr/te030/;
 # 	$PATTERN = qr/gtw/;
 } else {
 	$PATTERN	= qr/./;
@@ -146,9 +147,9 @@ sub load_nq {
 
 sub load_json {
 	my $file	= shift;
-	open(my $fh, '<', $file);
+	open(my $fh, '<:utf8', $file);
 	my $j	= JSON->new();
-	return $j->decode(do { local($/); <$fh> });
+	return $j->utf8(0)->decode(do { local($/); <$fh> });
 }
 
 my $path	= File::Spec->catfile( $Bin, 'data', 'json-ld-api-w3c' );
@@ -170,7 +171,11 @@ foreach my $t (@$tests) {
 	my $genRDF	= $options->{'produceGeneralizedRdf'} // 0;
 	my @types	= @{ $t->{'@type'} };
 	my %types	= map { $_ => 1 } @types;
-
+	my %args;
+	if (my $rdfDir = $options->{'rdfDirection'}) {
+		$args{rdf_direction}	= $rdfDir;
+	}
+	
 	my $test_base;
 	if (defined($_base)) {
 		$test_base	= IRI->new(value => $_base, base => $base)->abs;
@@ -185,7 +190,7 @@ foreach my $t (@$tests) {
 	} elsif ($types{'jld:PositiveEvaluationTest'} or $types{'jld:PositiveSyntaxTest'}) {
 		note($id) if $debug;
 		my $evalTest	= $types{'jld:PositiveEvaluationTest'};
-		my $jld			= MyJSONLD->new(base_iri => IRI->new($test_base));
+		my $jld			= MyJSONLD->new(base_iri => IRI->new($test_base), %args);
 		my $infile		= File::Spec->catfile($path, $input);
 		my $data		= load_json($infile);
 		my $outfile		= File::Spec->catfile($path, $expect);
