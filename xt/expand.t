@@ -10,6 +10,7 @@ use File::Spec;
 use JSON qw(decode_json);
 use Data::Dumper;
 use JSONLD;
+use open ':std', ':encoding(UTF-8)';
 
 use Moo;
 use Type::Tiny::Role;
@@ -27,7 +28,7 @@ my $REPORT_NEGATIVE_TESTS	= 0;
 
 sub load_json {
 	my $file	= shift;
-	open(my $fh, '<', $file);
+	open(my $fh, '<:utf8', $file);
 	my $j	= JSON->new();
 	return $j->decode(do { local($/); <$fh> });
 }

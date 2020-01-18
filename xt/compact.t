@@ -10,6 +10,7 @@ use File::Spec;
 use JSON qw(decode_json);
 use Data::Dumper;
 use JSONLD;
+use open ':std', ':encoding(UTF-8)';
 
 use Moo;
 use Type::Tiny::Role;
@@ -18,7 +19,7 @@ our $debug	= 0;
 $JSONLD::debug	= $debug;
 our $PATTERN;
 if ($debug) {
-	$PATTERN = qr/t0002/;
+	$PATTERN = qr/t0004/;
 } else {
 	$PATTERN	= /./;
 }
@@ -27,7 +28,7 @@ my $REPORT_NEGATIVE_TESTS	= 0;
 
 sub load_json {
 	my $file	= shift;
-	open(my $fh, '<', $file);
+	open(my $fh, '<:utf8', $file);
 	my $j	= JSON->new();
 	return $j->decode(do { local($/); <$fh> });
 }
