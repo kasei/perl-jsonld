@@ -3447,10 +3447,10 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				println "13.2.1" if $debug;
 				$literal	= $self->new_blank();
 				println "13.2.2" if $debug;
+				println "TODO: spec text issue for literal construction";
 				my $t	= $self->new_triple(
 					$literal,
 					$self->new_iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#value'),
-					println "TODO: spec text issue for literal construction";
 					$self->new_dt_literal($item->{'@value'}, 'http://www.w3.org/2001/XMLSchema#string')
 # 					$item->{'@value'} # TODO: should this be a term constructor call?
 				);
@@ -3458,10 +3458,10 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				
 				if (exists $item->{'@language'}) {
 					println "13.2.3" if $debug;
+					println "TODO: spec text issue for literal construction";
 					my $t	= $self->new_triple(
 						$literal,
 						$self->new_iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#language'),
-						println "TODO: spec text issue for literal construction";
 						$self->new_dt_literal(lc($item->{'@language'}), 'http://www.w3.org/2001/XMLSchema#string')
 # 						$item->{'@language'} # TODO: should this be a term constructor call?
 					);
@@ -3469,10 +3469,10 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				}
 				
 				println "13.2.4" if $debug;
+				println "TODO: spec text issue for literal construction";
 				my $t2	= $self->new_triple(
 					$literal,
 					$self->new_iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#direction'),
-					println "TODO: spec text issue for literal construction";
 					$self->new_dt_literal($item->{'@direction'}, 'http://www.w3.org/2001/XMLSchema#string')
 # 					$item->{'@direction'} # TODO: should this be a term constructor call?
 				);
