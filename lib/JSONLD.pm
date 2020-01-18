@@ -2925,7 +2925,10 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 	sub to_rdf {
 		my $self	= shift;
 		my $obj		= shift;
-		my $expandedInput	= $self->expand($obj);
+		my $expandedInput	= do {
+			local($debug)	= 0;
+			$self->expand($obj);
+		};
 		println "to rdf " . Data::Dumper->Dump([$expandedInput], ['expandedInput']) if $debug;
 		my $dataset	= $self->new_dataset;
 		my $map		= {};
@@ -3003,9 +3006,10 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		my $__indent	= indent();
 		my $self			= shift;
 		my $element			= shift;
-		println(Data::Dumper->Dump([$element], [qw(element)])) if $debug;
 		my $map				= shift;
 		my $activeGraph		= shift // '@default';
+		println(Data::Dumper->Dump([$activeGraph], [qw(activeGraph)])) if $debug;
+		println(Data::Dumper->Dump([$element], [qw(element)])) if $debug;
 		my $activeSubject	= shift;
 		my $activeProp		= shift;
 		my $list			= shift;
@@ -3193,7 +3197,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 						
 			if (exists $element->{'@included'}) {
 				println "6.11" if $debug;
-				$self->_7_2_2_nodemap_generation($element->{'@included'}, $map, $id);
+				$self->_7_2_2_nodemap_generation($element->{'@included'}, $map, $activeGraph);
 				delete $element->{'@included'};
 			}
 
@@ -3286,11 +3290,11 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 					if ($property eq '@type') {
 						println "1.3.2.1" if $debug;
 						foreach my $type (@$values) {
-							if ($self->_is_well_formed_iri($type)) {
+							if ($self->_is_well_formed_graph_node($type)) {
 								my $q	= $self->new_quad(
 									$self->new_graph_node($subject),
 									$self->new_iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'),
-									$self->new_iri($type),
+									$self->new_graph_node($type),
 									$graph_iri
 								);
 								$self->add_quad($q, $dataset);
@@ -3434,8 +3438,9 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			println "13" if $debug;
 			if ($dir eq 'i18n-datatype') {
 				println "13.1" if $debug;
-				my $language	= $item->{'@language'} // ''; # https://github.com/w3c/json-ld-api/issues/277
-				$datatype	= join('_', 'https://www.w3.org/ns/i18n#', $language, $item->{'@direction'});
+				my $language	= $item->{'@language'} // '';
+				# https://github.com/w3c/json-ld-api/issues/337
+				$datatype	= 'https://www.w3.org/ns/i18n#' . join('_', lc($language), $item->{'@direction'});
 				$literal	= $self->new_dt_literal($value, $datatype);
 			} elsif ($dir eq 'compound-literal') {
 				println "13.2" if $debug;
@@ -3445,7 +3450,9 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				my $t	= $self->new_triple(
 					$literal,
 					$self->new_iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#value'),
-					$item->{'@value'} # TODO: should this be a term constructor call?
+					println "TODO: spec text issue for literal construction";
+					$self->new_dt_literal($item->{'@value'}, 'http://www.w3.org/2001/XMLSchema#string')
+# 					$item->{'@value'} # TODO: should this be a term constructor call?
 				);
 				push(@$list_triples, $t);
 				
@@ -3454,7 +3461,9 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 					my $t	= $self->new_triple(
 						$literal,
 						$self->new_iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#language'),
-						$item->{'@language'} # TODO: should this be a term constructor call?
+						println "TODO: spec text issue for literal construction";
+						$self->new_dt_literal(lc($item->{'@language'}), 'http://www.w3.org/2001/XMLSchema#string')
+# 						$item->{'@language'} # TODO: should this be a term constructor call?
 					);
 					push(@$list_triples, $t);
 				}
@@ -3463,13 +3472,15 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				my $t2	= $self->new_triple(
 					$literal,
 					$self->new_iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#direction'),
-					$item->{'@direction'} # TODO: should this be a term constructor call?
+					println "TODO: spec text issue for literal construction";
+					$self->new_dt_literal($item->{'@direction'}, 'http://www.w3.org/2001/XMLSchema#string')
+# 					$item->{'@direction'} # TODO: should this be a term constructor call?
 				);
 				push(@$list_triples, $t2);
 			}
 		} else {
 			println "14" if $debug;
-			$literal	= (exists $item->{'@language'}) ? $self->new_lang_literal($value, $item->{'@language'}) : $self->new_dt_literal($value, $datatype);
+			$literal	= (exists $item->{'@language'}) ? $self->new_lang_literal($value, lc($item->{'@language'} // '')) : $self->new_dt_literal($value, $datatype);
 		}
 		
 		println "15" if $debug;
