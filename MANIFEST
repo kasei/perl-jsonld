@@ -20,5 +20,6 @@ meta/changes.ttl
 README
 t/00.load.t
 t/simple.t
-xt/parser-json-ld-expand.t
+xt/compact.t
+xt/expand.t
 xt/to-rdf.t
