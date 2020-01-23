@@ -4,7 +4,7 @@ JSONLD - A toolkit for interacting with JSON-LD data.
 
 =head1 VERSION
 
-This document describes JSONLD version 0.000_04
+This document describes JSONLD version 0.000_05
 
 =head1 SYNOPSIS
 
@@ -34,7 +34,7 @@ linked data.
 package JSONLD {
 	use v5.14;
 	use autodie;
-	our $VERSION	= '0.000_04';
+	our $VERSION	= '0.000_05';
 	use utf8;
 	use Moo;
 	use LWP;
@@ -1120,8 +1120,10 @@ Returns the JSON-LD expansion of C<< $data >>.
 			$default_language	= lc($activeCtx->{'@language'});
 		}
 		
-		println "3 TODO" if $debug;
+		println "3" if $debug;
 		foreach my $term (sort { length($a) <=> length($b) || $a cmp $b } keys %{ $activeCtx->{'terms'} }) {
+			my $__indent	= indent();
+			println "3 [$term]" if $debug;
 			my $tdef	= $self->_ctx_term_defn($activeCtx, $term);
 			if (not defined($tdef)) {
 				println "3.1" if $debug;
@@ -1213,62 +1215,61 @@ Returns the JSON-LD expansion of C<< $data >>.
 					println "3.13.5" if $debug;
 					$lang_dir	= '@null';
 				}
-			}
-			
-			if (not exists $language_map->{$lang_dir}) {
-				println "3.14" if $debug;
-				$language_map->{$lang_dir}	= $term;
+				if (not exists $language_map->{$lang_dir}) {
+					println "3.13.6" if $debug;
+					$language_map->{$lang_dir}	= $term;
+				}
 			} elsif (exists $tdef->{'language_mapping'}) {
-				println "3.15" if $debug;
-				println "3.15.1" if $debug;
+				println "3.14" if $debug;
+				println "3.14.1" if $debug;
 				my $language	= (not defined($tdef->{'language_mapping'})) ? '@null' : lc($tdef->{'language_mapping'});
 
 				if (not exists $language_map->{$language}) {
-					println "3.15.2" if $debug;
+					println "3.14.2" if $debug;
 					$language_map->{$language}	= $term;
 				}
 			} elsif (exists $tdef->{'direction_mapping'}) {
-				println "3.16" if $debug;
-				println "3.16.1" if $debug;
+				println "3.15" if $debug;
+				println "3.15.1" if $debug;
 				my $direction	= (not defined $tdef->{'direction_mapping'}) ? '@none' : '_' . $tdef->{'direction_mapping'};
 
 				if (not exists $language_map->{$direction}) {
-					println "3.16.2" if $debug;
+					println "3.15.2" if $debug;
 					$language_map->{$direction}	= $term;
 				}
 			} elsif (exists $activeCtx->{'@direction'}) {
-				println "3.17" if $debug;
-				println "3.17.1" if $debug;
+				println "3.16" if $debug;
+				println "3.16.1" if $debug;
 				my $lang_dir	= lc(join('_', $self->default_language, $self->default_base_direction));
 				
 				if (not exists $language_map->{$lang_dir}) {
-					println "3.17.2" if $debug;
+					println "3.16.2" if $debug;
 					$language_map->{$lang_dir}	= $term;
 				}
 				
 				if (not exists $language_map->{'@none'}) {
-					println "3.17.3" if $debug;
+					println "3.16.3" if $debug;
 					$language_map->{'@none'}	= $term;
 				}
 				
 				if (not exists $type_map->{'@none'}) {
-					println "3.17.4" if $debug;
+					println "3.16.4" if $debug;
 					$type_map->{'@none'}	= $term;
 				}
 			} else {
-				println "3.18" if $debug;
+				println "3.17" if $debug;
 				if (not exists $language_map->{lc $default_language}) {
-					println "3.18.1" if $debug;
+					println "3.17.1" if $debug;
 					$language_map->{lc $default_language}	= $term;
 				}
 				
 				if (not exists $language_map->{'@none'}) {
-					println "3.18.2" if $debug;
+					println "3.17.2" if $debug;
 					$language_map->{'@none'}	= $term;
 				}
 
 				if (not exists $type_map->{'@none'}) {
-					println "3.18.3" if $debug;
+					println "3.17.3" if $debug;
 					$type_map->{'@none'}	= $term;
 				}
 			}
@@ -1276,6 +1277,46 @@ Returns the JSON-LD expansion of C<< $data >>.
 
 		println "4" if $debug;
 		return $result;
+	}
+
+	sub _4_4_2_term_selection {
+		my $self				= shift;
+		my $inverseCtx			= shift;
+		my $var					= shift;
+		my $containers			= shift;
+		my $type_language		= shift;
+		my $preferred_values	= shift;
+		println "ENTER    =================> _4_4_2_term_selection" if $debug;
+		my $__indent	= indent();
+		println "1" if $debug;
+		my $container_map	= $inverseCtx->{$var};
+		
+		println "2" if $debug;
+		foreach my $container (@$containers) {
+			if (not exists $container_map->{$container}) {
+				println "2.1" if $debug;
+				next;
+			}
+			println "2.2" if $debug;
+			my $type_language_map	= $container_map->{$container};
+			
+			println "2.3" if $debug;
+			my $value_map	= $type_language_map->{$type_language};
+			
+			println "2.4" if $debug;
+			foreach my $item (@$preferred_values) {
+				if (not exists $value_map->{$item}) {
+					println "2.4.1" if $debug;
+					next;
+				}
+				
+				println "2.4.2" if $debug;
+				return $value_map->{$item};
+			}
+		}
+
+		println "3" if $debug;
+		return;
 	}
 
 	sub _5_1_2_expansion {
@@ -2418,6 +2459,8 @@ Returns the JSON-LD expansion of C<< $data >>.
 			my $not_set		= ($activeProp // '') ne '@set';
 			my $tdef		= $self->_ctx_term_defn($activeCtx, $activeProp);
 			my $container_mapping	= $tdef->{'container_mapping'};
+			# https://github.com/w3c/json-ld-api/issues/334
+# 			if (scalar(@$result) == 1 and $compactArrays and (($not_graph and $not_set) or (not($self->_cm_contains_any($container_mapping, '@list', '@set')) ))) {
 			if (scalar(@$result) == 1 and (($not_graph and $not_set) or (not($self->_cm_contains_any($container_mapping, '@list', '@set')) and $compactArrays))) {
 				# https://github.com/w3c/json-ld-api/issues/334
 				println "3.3" if $debug;
@@ -2725,10 +2768,10 @@ Returns the JSON-LD expansion of C<< $data >>.
 		{
 			no warnings 'uninitialized';
 			println "ENTER    =================> _6_2_2_iri_compaction('$var')" if $debug;
-			println(Data::Dumper->Dump([$activeCtx], ['activeCtx'])) if $debug;
-			println(Data::Dumper->Dump([$inverseCtx], ['inverseCtx'])) if $debug;
 		}
 		my $__indent	= indent();
+		println(Data::Dumper->Dump([$activeCtx], ['activeCtx'])) if $debug;
+		println(Data::Dumper->Dump([$inverseCtx], ['inverseCtx'])) if $debug;
 		
 		unless (defined($var)) {
 			println "1" if $debug;
@@ -2736,7 +2779,141 @@ Returns the JSON-LD expansion of C<< $data >>.
 		}
 		
 		if ($vocab and exists $inverseCtx->{$var}) {
-			println "2 TODO"; # if $debug;
+			println "2" if $debug;
+			println "2.1" if $debug;
+			my $defaultLanguage;
+			if (defined $activeCtx->{'default_base_direction'}) {
+				println "2.1.1" if $debug;
+				$defaultLanguage	= join('_', $activeCtx->{'@language'}, $activeCtx->{'default_base_direction'});
+			} else {
+				println "2.1.2" if $debug;
+				if (exists $activeCtx->{'@language'}) {
+					$defaultLanguage	= lc($activeCtx->{'@language'});
+				} else {
+					$defaultLanguage	= '@none';
+				}
+			}
+			
+			if (ref($value) eq 'HASH' and exists $value->{'@preserve'}) {
+				println "2.2" if $debug;
+				$value	= $value->{'@preserve'}[0];
+			}
+			
+			println "2.3" if $debug;
+			my $containers	= [];
+			
+			println "2.4" if $debug;
+			my $type_language		= '@language';
+			my $type_language_value	= '@null';
+			
+			if (ref($value) eq 'HASH' and exists $value->{'@index'} and not $self->_is_graph_object($value)) {
+				println "2.5" if $debug;
+				push(@$containers, '@index', '@index@set');
+			}
+			
+			if ($reverse) {
+				println "2.6" if $debug;
+				$type_language			= '@type';
+				$type_language_value	= '@reverse';
+				push(@$containers, '@set');
+			} elsif ($self->_is_list_object($value)) {
+				println "2.7" if $debug;
+				println "2.7.1 TODO" if $debug;
+				println "2.7.2 TODO" if $debug;
+				println "2.7.3 TODO" if $debug;
+				println "2.7.4 TODO" if $debug;
+				println "2.7.5 TODO" if $debug;
+				println "2.7.6 TODO" if $debug;
+				println "2.7.7 TODO" if $debug;
+				println "2.7.8 TODO" if $debug;
+			} elsif ($self->_is_graph_object($value)) {
+				println "2.8 TODO" if $debug;
+			} else {
+				println "2.9" if $debug;
+				if ($self->_is_value_object($value)) {
+					println "2.9.1" if $debug;
+					if (exists $value->{'@direction'} and not exists $value->{'@index'}) {
+						println "2.9.1.1" if $debug;
+						$type_language_value	= lc(join('_', $value->{'@language'} // '', $value->{'@direction'}));
+						push(@$containers, '@language', '@language@set');
+					} elsif (exists $value->{'@language'} and not exists $value->{'@index'}) {
+						println "2.9.1.2" if $debug;
+						$type_language_value	= $value->{'@language'};
+						push(@$containers, '@language', '@language@set');
+					} elsif (exists $value->{'@type'}) {
+						println "2.9.1.3" if $debug;
+						$type_language_value	= $value->{'@type'};
+						$type_language			= '@type';
+					}
+				} else {
+					println "2.9.2" if $debug;
+					$type_language			= '@type';
+					$type_language_value	= '@id';
+					push(@$containers, '@id', '@id@set', '@type', '@set@type');
+				}
+				
+				println "2.9.3" if $debug;
+				push(@$containers, '@set');
+			}
+			
+			println "2.10" if $debug;
+			push(@$containers, '@none');
+			
+			if ($self->processing_mode ne 'json-ld-1.0' and not(ref($value) eq 'HASH' and exists $value->{'@index'})) {
+				# TODO: spec is missing the ref 'HASH' check
+				println "2.11" if $debug;
+				push(@$containers, '@index', '@index@set');
+			}
+			
+			my @keys	= (ref($value) eq 'HASH') ? keys %$value : ();
+			if ($self->processing_mode ne 'json-ld-1.0' and scalar(@keys) == 1 and $keys[0] eq '@value') {
+				println "2.12" if $debug;
+				push(@$containers, '@language', '@language@set');
+			}
+			
+			if (not defined($type_language_value)) {
+				println "2.13" if $debug;
+				$type_language_value	= '@null';
+			}
+			
+			println "2.14" if $debug;
+			my $preferred_values	= [];
+			
+			if ($type_language_value eq '@reverse') {
+				println "2.15" if $debug;
+				push(@$preferred_values, '@reverse');
+			}
+			
+			if (($type_language_value eq '@id' or $type_language_value eq '@reverse') and ref($value) eq 'HASH' and exists $value->{'@id'}) {
+				# TODO: spec is missing the ref 'HASH' check
+				println "2.16" if $debug;
+				println "2.16.1 TODO" if $debug;
+				println "2.16.2 TODO" if $debug;
+			} else {
+				println "2.17" if $debug;
+				push(@$preferred_values, $type_language_value, '@none');
+				if ($self->_is_list_object($value) and not scalar(@{ $value->{'@list'} })) {
+					# https://github.com/w3c/json-ld-api/issues/345
+					$type_language	= '@any';
+				}
+			}
+			
+			println "2.18" if $debug;
+			push(@$preferred_values, '@any');
+			
+			my @underscored	= map { substr($_, 1+index($_, '_')) } grep { /_/ } @$preferred_values;
+			if (scalar(@underscored)) {
+				println "2.19" if $debug;
+				push(@$preferred_values, @underscored);
+			}
+			
+			println "2.20 TODO" if $debug;
+			my $term	= $self->_4_4_2_term_selection($inverseCtx, $var, $containers, $type_language, $preferred_values);
+
+			if (defined($term)) {
+				println "2.21" if $debug;
+				return $term;
+			}
 		}
 		
 		if ($vocab and exists $activeCtx->{'@vocab'}) {
@@ -2859,7 +3036,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 			# https://github.com/w3c/json-ld-api/issues/313
 			my $vlang				= $value->{'@language'} // '';
 			my $lang_both_undef		= (not(defined($value->{'@language'})) and not(defined($language)));
-			my $lang_same			= ($lang_both_undef or (lc($vlang) eq lc($language)));
+			my $lang_same			= ($lang_both_undef or (defined($vlang) and defined($language) and lc($vlang) eq lc($language)));
 			my $lang_not_present	= ((not defined($language)) and (not exists $value->{'@language'}));
 			my $dir					= $value->{'@direction'};
 			my $dir_both_undef		= (not(defined($value->{'@direction'})) and not(defined($direction)));
