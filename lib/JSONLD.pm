@@ -3925,7 +3925,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			unless ($datatype) {
 				$datatype	= 'http://www.w3.org/2001/XMLSchema#double';
 			}
-		} elsif ($is_int or ($is_num and (defined($datatype) and $datatype eq 'http://www.w3.org/2001/XMLSchema#integer'))) {
+		} elsif ($is_num) {
 			println "11" if $debug;
 			$value	= sprintf('%011.0f', $value);
 			$value	=~ s/^(-?)0+(\d)/$1$2/;
