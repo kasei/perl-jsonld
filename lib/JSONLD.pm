@@ -4,7 +4,7 @@ JSONLD - A toolkit for interacting with JSON-LD data.
 
 =head1 VERSION
 
-This document describes JSONLD version 0.000_05
+This document describes JSONLD version 0.000_06
 
 =head1 SYNOPSIS
 
@@ -34,7 +34,7 @@ linked data.
 package JSONLD {
 	use v5.14;
 	use autodie;
-	our $VERSION	= '0.000_05';
+	our $VERSION	= '0.000_06';
 	use utf8;
 	use Moo;
 	use LWP;
@@ -94,6 +94,8 @@ Returns the JSON-LD expansion of C<< $data >>.
 
 Returns the JSON-LD compaction of C<< $data >>, using the optionally supplied
 context.
+
+NOTE: Support for JSON-LD Compaction is not fully supported in this version.
 
 =cut
 
