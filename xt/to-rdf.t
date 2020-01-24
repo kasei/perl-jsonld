@@ -129,6 +129,7 @@ sub load_nq {
 # 	foreach my $st ($miter->elements) {
 # 		say $st->as_string;
 # 	}
+	my %seen;
 	return $miter->map(sub {
 		# canonicalize rdf:JSON literals
 		my $st	= shift;
@@ -144,6 +145,10 @@ sub load_nq {
 			}
 		}
 		return $st;
+	})->grep(sub {
+		my $st	= shift;
+		$seen{ $st->as_string }++;
+		return ($seen{ $st->as_string } == 1);
 	})->materialize;
 }
 
@@ -174,6 +179,10 @@ foreach my $t (@$tests) {
 	my @types	= @{ $t->{'@type'} };
 	my %types	= map { $_ => 1 } @types;
 	my %args;
+	my %expandArgs;
+	if (my $expand = $options->{'expandContext'}) {
+		$expandArgs{'expandContext'}	= $expand;
+	}
 	if (my $rdfDir = $options->{'rdfDirection'}) {
 		$args{rdf_direction}	= $rdfDir;
 	}
@@ -206,7 +215,7 @@ foreach my $t (@$tests) {
 		}
 		my $default_graph	= $jld->default_graph();
 		my $got		= eval {
-			my $qiter	= $jld->to_rdf($data)->get_quads()->materialize();
+			my $qiter	= $jld->to_rdf($data, %expandArgs)->get_quads()->materialize();
 			my $iter	= Attean::CodeIterator->new(generator => sub {
 				my $q	= $qiter->next;
 				return unless ($q);
