@@ -45,7 +45,7 @@ package JSONLD {
 	use FindBin qw($Bin);
 	use File::Spec;
 	use File::Glob qw(bsd_glob);
-	use Encode qw(encode);
+	use Encode qw(encode decode_utf8);
 	use Debug::ShowStuff qw(indent println);
 	use Data::Dumper;
 	use Clone 'clone';
@@ -3896,7 +3896,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		
 		if (defined($datatype) and $datatype eq '@json') {
 			println "8" if $debug;
-			$value		= encode_json($value);
+			$value		= decode_utf8(JSON->new->utf8->allow_nonref->encode($value));
 			$datatype	= 'http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON';
 		}
 		
@@ -3988,7 +3988,9 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			}
 		} else {
 			println "14" if $debug;
-			$literal	= (exists $item->{'@language'}) ? $self->new_lang_literal($value, lc($item->{'@language'} // '')) : $self->new_dt_literal($value, $datatype);
+			$literal	= (exists $item->{'@language'})
+						? $self->new_lang_literal($value, lc($item->{'@language'} // ''))
+						: $self->new_dt_literal($value, $datatype);
 		}
 		
 		println "15" if $debug;
