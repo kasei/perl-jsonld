@@ -167,7 +167,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		my $obj		= shift;
 		my $expandedInput	= do {
 			local($debug)	= 0;
-			$self->expand($obj);
+			$self->expand($obj, @_);
 		};
 		println "to rdf " . Data::Dumper->Dump([$expandedInput], ['expandedInput']) if $debug;
 		my $dataset	= $self->new_dataset;
