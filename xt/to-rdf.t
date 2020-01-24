@@ -20,7 +20,7 @@ our $debug	= 0;
 $JSONLD::debug	= $debug;
 our $PATTERN;
 if ($debug) {
-	$PATTERN = qr/te030/;
+	$PATTERN = qr/tjs09/;
 # 	$PATTERN = qr/gtw/;
 } else {
 	$PATTERN	= qr/./;
@@ -31,7 +31,9 @@ package MyJSONLD {
 	use autodie;
 	use Moo;
 	use Attean::RDF;
+	use Encode qw(decode_utf8 encode_utf8);
 	extends 'JSONLD';
+	use namespace::clean;
 	
 	sub default_graph {
 		return iri('http://attean.example.org/default-graph');
@@ -102,7 +104,7 @@ package MyJSONLD {
 	sub canonical_json {
 		my $class	= shift;
 		my $value	= shift;
-		my $j		= JSON->new->canonical(1);
+		my $j		= JSON->new->utf8->allow_nonref->canonical(1);
 		my $v		= $j->decode($value);
 		return $j->encode($v);
 	}
@@ -112,7 +114,7 @@ package MyJSONLD {
 		my $value	= shift;
 		my $dt		= shift;
 		if ($dt eq 'http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON') {
-			$value	= $self->canonical_json($value);
+			$value	= decode_utf8($self->canonical_json(encode_utf8($value)));
 		}
 		return dtliteral($value, $dt);
 	}
@@ -120,7 +122,7 @@ package MyJSONLD {
 
 sub load_nq {
 	my $file	= shift;
-	open(my $fh, '<', $file);
+	open(my $fh, '<:utf8', $file) or die $!;
 	my $parser	= Attean->get_parser('nquads')->new();
 	my $iter	= $parser->parse_iter_from_io($fh);
 	my $miter	= $iter->materialize;
@@ -134,7 +136,7 @@ sub load_nq {
 		if ($o->does('Attean::API::Literal')) {
 			my $dt	= $o->datatype;
 			if ($dt and $dt->value eq 'http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON') {
-				my $value	= MyJSONLD->canonical_json($o->value);
+				my $value	= $o->value;
 				my $stclass	= ref($st);
 				my @nodes	= $st->values;
 				$nodes[2]	= MyJSONLD->new_dt_literal($value, 'http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON');
@@ -223,7 +225,8 @@ foreach my $t (@$tests) {
 			}, item_type => 'Attean::API::TripleOrQuad')->materialize;
 		};
 		if ($@) {
-			diag("Died: $@");
+			fail("Died: $id: $@");
+			next;
 		}
 
 		if ($evalTest) {
