@@ -3346,7 +3346,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		} elsif (not _is_string($value->{'@value'})) {
 			println "7" if $debug;
 			my @keys	= keys %$value;
-			if (scalar(@keys) == 1) {
+			if (scalar(@keys) == 1 and $keys[0] eq '@value') {
 				# https://github.com/w3c/json-ld-api/issues/351
 				$result	= $value->{'@value'};
 			} elsif (exists $value->{'@index'} and $self->_cm_contains($container_mapping, '@index')) {
