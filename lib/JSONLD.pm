@@ -114,7 +114,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		
 # 		warn "Compacting...";
 		my $c	= $self->_compact($ctx, $inverseCtx, undef, $expanded_input, %args);
-		if (scalar(%{ $context->{'@context'} })) {
+		if (scalar(%{ $context->{'@context'} || {} })) {
 			$c->{'@context'}	= $context->{'@context'};
 		}
 		return $c;
@@ -166,6 +166,15 @@ Returns the JSON-LD expansion of C<< $data >>.
 		}
 		
 		return $expanded_output;
+	}
+	
+	sub _values_from_scalar_or_array {
+		my $value	= shift;
+		if (ref($value) eq 'ARRAY') {
+			return @$value;
+		} else {
+			return $value;
+		}
 	}
 	
 	sub _is_prefix_of {
@@ -236,7 +245,8 @@ Returns the JSON-LD expansion of C<< $data >>.
 	sub _make_relative_iri {
 		my $base	= shift;
 		my $rel		= shift;
-		if ($base->scheme ne $rel->scheme) {
+		println "Make relative IRI from: " . Data::Dumper->Dump([$base->abs, $rel->abs], [qw(base rel)]) if $debug;
+		if (($base->scheme // '') ne ($rel->scheme // '')) {
 			return $rel->abs;
 		}
 		
@@ -822,7 +832,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 				if ($c ne '@set' and $c ne '@index' and not(defined($c))) {
 					die 'invalid reverse property';
 				}
-				$definition->{'container_mapping'}	= $c;
+				$definition->{'container_mapping'}	= [$c];
 			}
 			
 			println "14.6" if $debug;
@@ -882,7 +892,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 			
 					if ($term !~ m{[:/]} and $simple_term and $definition->{'iri_mapping'} =~ m{[][:/?#@]$}) {
 						println "16.2.5" if $debug;
-						$definition->{'prefix'}	= 1;
+						$definition->{'prefix_flag'}	= 1;
 					}
 	# 			}
 			}
@@ -902,8 +912,14 @@ Returns the JSON-LD expansion of C<< $data >>.
 				$definition->{'iri_mapping'}	= $term; # 17.3
 			}
 		} elsif ($term =~ m{/}) {
-			# TODO: 18
-			println "18 TODO"; # if $debug;
+			println "18" if $debug;
+			println "18.1"; # if $debug;
+			
+			println "18.2"; # if $debug;
+			$definition->{'iri_mapping'}	= $self->_5_2_2_iri_expansion($activeCtx, $term);
+			unless (_is_iri($definition->{'iri_mapping'})) {
+				die 'invalid IRI mapping';
+			}
 		} elsif ($term eq '@type') {
 			println "19" if $debug;
 			$definition->{'iri_mapping'}	= '@type'; # 19
@@ -1065,10 +1081,10 @@ Returns the JSON-LD expansion of C<< $data >>.
 			}
 			
 			println "27.2" if $debug;
-			$definition->{'prefix'}	= $value->{'@prefix'};
+			$definition->{'prefix_flag'}	= $value->{'@prefix'};
 			# TODO: check if this value is a boolean. if it is NOT, die 'invalid @prefix value';
 			
-			if ($definition->{'prefix'} and exists $keywords{$definition->{'iri_mapping'}}) {
+			if ($definition->{'prefix_flag'} and exists $keywords{$definition->{'iri_mapping'}}) {
 				println "27.3" if $debug;
 				die 'invalid term definition';
 			}
@@ -1171,7 +1187,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 					println "3.9.1" if $debug;
 					$type_map->{'@reverse'}	= $term;
 				}
-			} elsif ($tdef->{'type_mapping'} eq '@none') {
+			} elsif (($tdef->{'type_mapping'} // '') eq '@none') {
 				println "3.10" if $debug;
 				println "3.10.1" if $debug;
 				my $language_map	= $type_language_map->{'@language'};
@@ -1293,6 +1309,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		
 		println "2" if $debug;
 		foreach my $container (@$containers) {
+			println "2 [$container]" if $debug;
 			if (not exists $container_map->{$container}) {
 				println "2.1" if $debug;
 				next;
@@ -2328,7 +2345,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 			}
 			
 			my $tdef	= $self->_ctx_term_defn($activeCtx, $prefix);
-			if ($tdef and $tdef->{'iri_mapping'} and $tdef->{'prefix'}) {
+			if ($tdef and $tdef->{'iri_mapping'} and $tdef->{'prefix_flag'}) {
 				my $i	= $tdef->{'iri_mapping'} . $suffix;
 				println "6.4 returning from _5_2_2_iri_expansion with concatenated iri mapping and suffix: $i" if $debug;
 				return $i;
@@ -2427,7 +2444,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 # 		local($Data::Dumper::Indent)	= 0;
 # 		println(Data::Dumper->Dump([$activeCtx], ['activeCtx'])) if $debug;
 # 		println(Data::Dumper->Dump([$activeProp], ['activeProp'])) if $debug;
-# 		println(Data::Dumper->Dump([$element], ['element'])) if $debug;
+		println(Data::Dumper->Dump([$element], ['element'])) if $debug;
 		my %args		= @_;
 		my $compactArrays	= $args{compactArrays} // 0;
 		my $ordered		= $args{ordered} // 0;
@@ -2494,6 +2511,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 		}
 		
 		if (exists $element->{'@value'} or exists $element->{'@id'}) {
+			println "possibly 7" if $debug;
 			my $v	= $self->_6_3_value_compaction($activeCtx, $inverseCtx, $activeProp, $element);
 			my $tm	= $tdef->{'type_mapping'} // '';
 			if (_is_scalar($v) or $tm eq '@json') {
@@ -2518,7 +2536,8 @@ Returns the JSON-LD expansion of C<< $data >>.
 		
 		if (exists $element->{'@type'}) {
 			println "11" if $debug;
-			my @types	= @{ $element->{'@type'} };
+			my @types	= _values_from_scalar_or_array($element->{'@type'});
+# 			my @types	= @{ $element->{'@type'} };
 			my @compacted_types	= map { $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $_, vocab => 1) } @types;
 			foreach my $term (sort @compacted_types) {
 				println "11.1" if $debug;
@@ -2545,24 +2564,25 @@ Returns the JSON-LD expansion of C<< $data >>.
 				println "12.1" if $debug;
 				if (_is_string($expandedValue)) {
 					println "12.1.1" if $debug;
-					my $compacted_value	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $expandedValue);
+					my $compactedValue	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $expandedValue);
 
 					println "12.1.2" if $debug;
 					my $alias	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $expandedProperty, vocab => 1);
 					
 					println "12.1.3" if $debug;
-					$result->{$alias}	= $compacted_value;
+					$result->{$alias}	= $compactedValue;
 					next;
 				}
 			} elsif ($expandedProperty eq '@type') {
 				println "12.2" if $debug;
+				my $compactedValue;
 				if (_is_string($expandedValue)) {
 					println "12.2.1" if $debug;
-					my $compacted_value	= $self->_6_2_2_iri_compaction($type_scoped_ctx, $inverseCtx, $expandedValue, vocab => 1);
+					$compactedValue	= $self->_6_2_2_iri_compaction($type_scoped_ctx, $inverseCtx, $expandedValue, vocab => 1);
 				} else {
 					println "12.2.2" if $debug;
 					println "12.2.2.1" if $debug;
-					my $compactedValue	= [];
+					$compactedValue	= [];
 
 					println "12.2.2.2" if $debug;
 					foreach my $expandedType (@{ $expandedValue }) {
@@ -2578,12 +2598,74 @@ Returns the JSON-LD expansion of C<< $data >>.
 						$compactedValue	= $compactedValue->[0];
 					}
 				}
+
+				println "12.2.3" if $debug;
+				my $alias	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $expandedProperty, vocab => 1);
+
+				println "12.2.4" if $debug;
+				my $tdef	= $self->_ctx_term_defn($activeCtx, $alias);
+				my $container_mapping	= $tdef->{'container_mapping'};
+				my $as_array	= ($self->_cm_contains($container_mapping, '@set'))
+								? 1
+								: not($compactArrays);
+				println "12.2.5" if $debug;
+				$self->_add_value($result, $alias, $compactedValue, as_array => $as_array);
+
+				println "12.2.6" if $debug;
+				next;
 			} elsif ($expandedProperty eq '@reverse') {
-				println "12.3 TODO"; # if $debug;
+				println "12.3" if $debug;
+				println "12.3.1" if $debug;
+				my $compactedValue	= $self->_6_1_2_compaction($activeCtx, $inverseCtx, '@reverse', $expandedValue, compactArrays => $compactArrays, ordered => $ordered);
+				
+				foreach my $property (keys %$compactedValue) {
+					println "12.3.2 [$property]" if $debug;
+					my $value	= $compactedValue->{$property};
+					
+					my $tdef	= $self->_ctx_term_defn($activeCtx, $property);
+					if ($tdef->{'reverse'}) {
+						println "12.3.2.1" if $debug;
+						println "12.3.2.1.1" if $debug;
+						my $container_mapping	= $tdef->{'container_mapping'};
+						my $as_array;
+						if ($self->_cm_contains($container_mapping, '@set')) {
+							$as_array	= 1;
+						} else {
+							$as_array	= not($compactArrays);
+						}
+						
+						println "12.3.2.1.2" if $debug;
+						$self->_add_value($result, $property, $value, as_array => $as_array);
+						
+						println "12.3.2.1.3" if $debug;
+						delete $compactedValue->{$property};
+					}
+				}
+				
+				my @keys	= keys %$compactedValue;
+				if (scalar(@keys)) {
+					println "12.3.3" if $debug;
+					println "12.3.3.1" if $debug;
+					my $alias	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, '@reverse', vocab => 1);
+					
+					println "12.3.3.2" if $debug;
+					$result->{$alias}	= $compactedValue;
+				}
+				
+				println "12.3.4" if $debug;
+				next;
 			} elsif ($expandedProperty eq '@preserve') {
-				println "12.4 TODO"; # if $debug;
+				println "12.4" if $debug;
+				println "12.4.1" if $debug;
+				my $compactedValue	= $self->_6_1_2_compaction($activeCtx, $inverseCtx, $activeProp, $expandedValue, compactArrays => $compactArrays, ordered => $ordered);
+				
+				unless (ref($expandedValue) eq 'ARRAY' and scalar(@$expandedValue) == 0) {
+					println "12.4.2" if $debug;
+					$result->{'@preserve'}	= $compactedValue;
+				}
 			} elsif ($expandedProperty eq '@index' and $self->_cm_contains($container_mapping, '@index')) {
-				println "12.5 TODO"; # if $debug;
+				println "12.5" if $debug;
+				next;
 			} elsif ($expandedProperty =~ /^@(direction|index|language|value)$/) {
 				println "12.6" if $debug;
 				println "12.6.1" if $debug;
@@ -2626,25 +2708,27 @@ Returns the JSON-LD expansion of C<< $data >>.
 			}
 			
 			println "12.8" if $debug;
+			
 			foreach my $expandedItem (@$expandedValue) {
 				println "12.8.1" if $debug;
 				my $item_active_property	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $expandedProperty, value => $expandedItem, vocab => 1, 'reverse' => $insideReverse);
 				println(Data::Dumper->Dump([$item_active_property], ['item_active_property'])) if $debug;
 				
-				println "12.8.2" if $debug;
 				my $tdef	= $self->_ctx_term_defn($activeCtx, $item_active_property);
 				my $nest_result;
 				if (exists $tdef->{'nest_value'}) {
+					println "12.8.2" if $debug;
 					my $nest_term	= $tdef->{'nest_value'};
 					if ($nest_term ne '@nest') {
 						die 'invalid @nest value';
 					}
 					$nest_result	= $result->{$nest_term} // {};
 				} else {
+					println "12.8.3" if $debug;
 					$nest_result	= $result;
 				}
 				
-				println "12.8.3" if $debug;
+				println "12.8.4 " . Data::Dumper->Dump([$container_mapping], [qw(container_mapping)]) if $debug;
 				my $container	= undef;
 				my $container_mapping	= $tdef->{'container_mapping'};
 				if (defined $container_mapping) {
@@ -2653,29 +2737,29 @@ Returns the JSON-LD expansion of C<< $data >>.
 # 					$container	= (grep { $_ ne '@set' } @$container_mapping)[0];
 				}
 				
-				println "12.8.4 " . Data::Dumper->Dump([$container_mapping], [qw(container_mapping)]) if $debug;
+				println "12.8.5" if $debug;
 				my $as_array	= ($self->_cm_contains($container_mapping, '@set') or $item_active_property eq '@graph' or $item_active_property eq '@list');
 				
-				println "12.8.5" if $debug;
-				my $_element	= ((ref($expandedItem) ne 'HASH' or not exists $expandedItem->{'@list'}) and not $self->_is_graph_object($expandedItem))
+				println "12.8.6" if $debug;
+				my $_element	= ((ref($expandedItem) ne 'HASH' or not exists $expandedItem->{'@list'}) and (not($self->_is_graph_object($expandedItem)) or not exists($expandedItem->{'@list'})))
 								? $expandedItem
 								: $expandedItem->{'@list'};
 				my $compactedItem	= $self->_6_1_2_compaction($activeCtx, $inverseCtx, $item_active_property, $_element, %args);
 				
 				if ($self->_is_list_object($expandedItem)) {
-					println "12.8.6" if $debug;
+					println "12.8.7" if $debug;
 					if (ref($compactedItem) ne 'ARRAY') {
-						println "12.8.6.1" if $debug;
+						println "12.8.7.1" if $debug;
 						$compactedItem	= [$compactedItem];
 					}
 					
 					if (not $self->_cm_contains($container, '@list')) {
-						println "12.8.6.2" if $debug;
-						println "12.8.6.2.1" if $debug;
+						println "12.8.7.2" if $debug;
+						println "12.8.7.2.1" if $debug;
 						my $key	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, '@list', value => $compactedItem);
 						$compactedItem	= { $key => $compactedItem };
 					
-						println "12.8.6.2.2" if $debug;
+						println "12.8.7.2.2" if $debug;
 						if (exists $expandedItem->{'@index'}) {
 							my $key	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, '@index');
 							$compactedItem->{ $key }	= $expandedItem->{'@index'};
@@ -2684,21 +2768,45 @@ Returns the JSON-LD expansion of C<< $data >>.
 				}
 				
 				if ($self->_is_graph_object($expandedItem)) {
-					println "12.8.7"; # if $debug;
+					println "12.8.8"; # if $debug;
 					if ($self->_cm_contains($container, '@graph') and $self->_cm_contains($container, '@id')) {
-						println "12.8.7.1 TODO"; # if $debug;
+						println "12.8.8.1" if $debug;
+						println "12.8.8.1.1" if $debug;
+						my $map_object	= ($nest_result->{$item_active_property} //= {});
+						
+						println "12.8.8.1.2" if $debug;
+						my $map_key	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $expandedItem->{'@id'} // '@none', vocab => (not exists $expandedItem->{'@id'}));
+						
+						println "12.8.8.1.3" if $debug;
+						$self->_add_value($map_object, $map_key, $compactedItem, as_array => $as_array);
 					} elsif ($self->_cm_contains($container, '@graph') and $self->_cm_contains($container, '@index') and $self->_is_simple_graph_object($expandedItem)) {
-						println "12.8.7.2 TODO"; # if $debug;
+						println "12.8.8.2" if $debug;
+						println "12.8.8.2.1" if $debug;
+						my $map_object	= ($nest_result->{$item_active_property} //= {});
+						
+						println "12.8.8.2.2" if $debug;
+						my $map_key	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $expandedItem->{'@index'} // '@none');
+
+						println "12.8.8.2.3" if $debug;
+						$self->_add_value($map_object, $map_key, $compactedItem, as_array => $as_array);
 					} elsif ($container eq '@graph' and $self->_is_simple_graph_object($expandedItem)) {
-						println "12.8.7.3 TODO"; # if $debug;
+						println "12.8.8.3" if $debug;
+						if (ref($compactedItem) eq 'ARRAY' and scalar(@$compactedItem) > 1) {
+							println "12.8.8.3.1" if $debug;
+							my $k	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, '@included', value => $compactedItem);
+							$compactedItem	= {$k => $compactedItem};
+						}
+						
+						println "12.8.8.3.2" if $debug;
+						$self->_add_value($nest_result, $item_active_property, $compactedItem, as_array => $as_array);
 					} elsif ($container ne '@graph') {
-						println "12.8.7.4" if $debug;
-						println "12.8.7.4.1" if $debug;
+						println "12.8.8.4" if $debug;
+						println "12.8.8.4.1" if $debug;
 						my $key	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, '@graph', vocab => 1);
 						$compactedItem	= { $key => $compactedItem };
 						
 						if (exists $expandedItem->{'@id'}) {
-							println "12.8.7.4.2" if $debug;
+							println "12.8.8.4.2" if $debug;
 							my $key	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, '@id', vocab => 1);
 							my $value	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $expandedItem->{'@id'});
 							$compactedItem->{$key}	= $value;
@@ -2706,36 +2814,91 @@ Returns the JSON-LD expansion of C<< $data >>.
 						
 						
 						if (exists $expandedItem->{'@index'}) {
-							println "12.8.7.4.3" if $debug;
+							println "12.8.8.4.3" if $debug;
 							my $key	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, '@index', vocab => 1);
 							$compactedItem->{$key}	= $expandedItem->{'@index'};
 						}
 						
-						if ($as_array) {
-							println "12.8.7.4.4" if $debug;
-							$compactedItem	= [$compactedItem];
-						}
-						
-						
-						
-						println "12.8.7.4.5 TODO"; # if $debug;
-						# https://github.com/w3c/json-ld-api/issues/323
+						println "12.8.8.4.4" if $debug;
+						$self->_add_value($nest_result, $item_active_property, $compactedItem, as_array => $as_array);
 					}
 				} elsif ($self->_cm_contains_any($container, '@language', '@index', '@id', '@type') and not $self->_cm_contains($container, '@graph')) {
 					# TODO: spec text here is really confused since the type of `container` is scalar: "Otherwise, if container includes @language, @index, @id, or @type and container does not include @graph"
-					println "12.8.8 TODO"; # if $debug;
-				} else {
 					println "12.8.9" if $debug;
+					println "12.8.9.1" if $debug;
+					my $map_object	= ($nest_result->{$item_active_property} //= {});
+					
+					println "12.8.9.2" if $debug;
+					my $compaction_value;
+					foreach my $k ('@language', '@index', '@id', '@type') {
+						$compaction_value	= $k if ($self->_cm_contains_any($container, $k));
+					}
+					my $container_key	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $compaction_value, vocab => 1);
+					
+					println "12.8.9.3" if $debug;
+					my $tdef	= $self->_ctx_term_defn($activeCtx, $item_active_property) // {};
+					my $index_key	= $tdef->{'index_mapping'} // '@index';
+					
+					my $map_key;
+					if ($self->_cm_contains_any($container, '@language') and exists $expandedItem->{'@value'}) {
+						println "12.8.9.4" if $debug;
+						$compactedItem	= $expandedItem->{'@value'};
+						$map_key		= $expandedItem->{'@language'};
+					} elsif ($self->_cm_contains_any($container, '@index') and $index_key eq '@index') {
+						println "12.8.9.5" if $debug;
+						$map_key		= $expandedItem->{'@index'};
+					} elsif ($self->_cm_contains_any($container, '@index') and $index_key ne '@index') {
+						println "12.8.9.6" if $debug;
+						my @values	= @{ $compactedItem->{$container_key} || [] };
+						$map_key	= shift @values;
+						if (scalar(@values)) {
+							$compactedItem->{$container_key}	= [@values];
+						} else {
+							delete $compactedItem->{$container_key};
+						}
+					} elsif ($self->_cm_contains_any($container, '@id')) {
+						println "12.8.9.7" if $debug;
+						$map_key	= delete $compactedItem->{$container_key};
+					} elsif ($self->_cm_contains_any($container, '@type')) {
+						println "12.8.9.8" if $debug;
+						println "12.8.9.8.1" if $debug;
+						my @values	= @{ $compactedItem->{$container_key} || [] };
+						$map_key	= shift @values;
+						
+						if (scalar(@values)) {
+							println "12.8.9.8.2" if $debug;
+							$compactedItem->{$container_key}	= [@values];
+						} else {
+							println "12.8.9.8.3" if $debug;
+							delete $compactedItem->{$container_key};
+						}
+						
+						my @keys	= map { $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $_, vocab => 1) } keys %$compactedItem;
+						if (scalar(@keys) == 1 and $keys[0] eq '@id') {
+							println "12.8.9.8.4" if $debug;
+							$compactedItem	= $self->_6_1_2_compaction($activeCtx, $inverseCtx, $item_active_property, {'@id' => $expandedItem});
+						}
+					}
+					
+					if (not defined($map_key)) {
+						println "12.8.9.9" if $debug;
+						$map_key	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, '@none', vocab => 1);
+					}
+					
+					println "12.8.9.10 adding value to [$map_key]" if $debug;
+					$self->_add_value($map_object, $map_key, $compactedItem, as_array => 1);
+				} else {
+					println "12.8.10" if $debug;
 					if (not($compactArrays) and $as_array and ref($compactedItem) ne 'ARRAY') {
-						println "12.8.9.1" if $debug;
+						println "12.8.10.1" if $debug;
 						$compactedItem	= [$compactedItem];
 					}
 					
 					if (not exists $result->{$item_active_property}) {
-						println "12.8.9.2" if $debug;
+						println "12.8.10.2" if $debug;
 						$nest_result->{$item_active_property}	= $compactedItem;
 					} else {
-						println "12.8.9.3" if $debug;
+						println "12.8.10.3" if $debug;
 						if (ref($nest_result->{$item_active_property}) ne 'ARRAY') {
 							$nest_result->{$item_active_property}	= [$nest_result->{$item_active_property}];
 						}
@@ -2756,13 +2919,42 @@ Returns the JSON-LD expansion of C<< $data >>.
 		
 	}
 
+	sub _add_value {
+		my $self	= shift;
+		my $object	= shift;
+		my $key		= shift;
+		my $value	= shift;
+		unless (defined($value)) {
+			Carp::cluck "undefined value in add_value";
+		}
+		my %args	= @_;
+		my $as_array	= $args{'as_array'} // 0;
+		if ($as_array and ref($value) ne 'ARRAY') {
+			$value	= [$value];
+		}
+		
+		if (not exists $object->{$key}) {
+			$object->{$key}	= $value;
+		} else {
+			if (ref($object->{$key}) ne 'ARRAY') {
+				$object->{$key}	= [$object->{$key}];
+			}
+			
+			if (ref($value) eq 'ARRAY') {
+				push(@{ $object->{$key} }, @$value);
+			} else {
+				push(@{ $object->{$key} }, $value);
+			}
+		}
+	}
+	
 	sub _6_2_2_iri_compaction {
 		my $self		= shift;
 		my $activeCtx	= shift;
 		my $inverseCtx	= shift;
 		my $var			= shift;
 		my %args		= @_;
-		my $value		= $args{'value'} || 0;
+		my $value		= $args{'value'};
 		my $vocab		= $args{'vocab'} || 0;
 		my $reverse		= $args{'reverse'} || 0;
 		{
@@ -2770,11 +2962,11 @@ Returns the JSON-LD expansion of C<< $data >>.
 			println "ENTER    =================> _6_2_2_iri_compaction('$var')" if $debug;
 		}
 		my $__indent	= indent();
-		println(Data::Dumper->Dump([$activeCtx], ['activeCtx'])) if $debug;
-		println(Data::Dumper->Dump([$inverseCtx], ['inverseCtx'])) if $debug;
+# 		println(Data::Dumper->Dump([$activeCtx], ['activeCtx'])) if $debug;
+# 		println(Data::Dumper->Dump([$inverseCtx], ['inverseCtx'])) if $debug;
 		
 		unless (defined($var)) {
-			println "1" if $debug;
+			println "1 returning" if $debug;
 			return;
 		}
 		
@@ -2818,16 +3010,119 @@ Returns the JSON-LD expansion of C<< $data >>.
 				push(@$containers, '@set');
 			} elsif ($self->_is_list_object($value)) {
 				println "2.7" if $debug;
-				println "2.7.1 TODO" if $debug;
-				println "2.7.2 TODO" if $debug;
-				println "2.7.3 TODO" if $debug;
-				println "2.7.4 TODO" if $debug;
-				println "2.7.5 TODO" if $debug;
-				println "2.7.6 TODO" if $debug;
-				println "2.7.7 TODO" if $debug;
-				println "2.7.8 TODO" if $debug;
+				if (not exists $value->{'@index'}) {
+					println "2.7.1" if $debug;
+					push(@$containers, '@list');
+				}
+				
+				println "2.7.2" if $debug;
+				my $list	= $value->{'@list'};
+				
+				println "2.7.3" if $debug;
+				my $common_type;
+				my $common_language;
+				unless (scalar(@$list)) {
+					$common_language	= $defaultLanguage;
+				}
+				
+				println "2.7.4" if $debug;
+				foreach my $item (@$list) {
+					println "2.7.4.1" if $debug;
+					my $item_language	= '@none';
+					my $item_type		= '@none';
+					
+					if (exists $item->{'@value'}) {
+						println "2.7.4.2" if $debug;
+						if (exists $item->{'@direction'}) {
+							println "2.7.4.2.1" if $debug;
+							$item_language	= lc(join('_', $item->{'@language'} // '', $item->{'@direction'}));
+						} elsif (exists $item->{'@language'}) {
+							println "2.7.4.2.2" if $debug;
+							$item_language	= lc($item->{'@language'});
+						} elsif (exists $item->{'@type'}) {
+							println "2.7.4.2.3" if $debug;
+							$item_type	= $item->{'@type'};
+						} else {
+							println "2.7.4.2.4" if $debug;
+							$item_language	= '@null';
+						}
+					} else {
+						println "2.7.4.3" if $debug;
+						$item_type	= '@id';
+					}
+					
+					if (not defined($common_language)) {
+						println "2.7.4.4" if $debug;
+						$common_language	= $item_language;
+					} elsif ($item_language ne $common_language and exists $item->{'@value'}) {
+						println "2.7.4.5" if $debug;
+						$common_language	= '@none';
+					}
+					
+					if (not defined($common_type)) {
+						println "2.7.4.6" if $debug;
+						$common_type	= $item_type;
+					} elsif ($item_type ne $common_type) {
+						println "2.7.4.7" if $debug;
+						$common_type	= '@none';
+					}
+					
+					if ($common_language eq '@none' and $common_type eq '@none') {
+						println "2.7.4.8" if $debug;
+						last;
+					}
+				}
+				
+				if (not defined($common_language)) {
+					println "2.7.5" if $debug;
+					$common_language	= '@none';
+				}
+				
+				if (not defined($common_type)) {
+					println "2.7.6" if $debug;
+					$common_type	= '@none';
+				}
+				
+				if ($common_type ne '@none') {
+					println "2.7.7" if $debug;
+					$type_language	= '@type';
+					$type_language_value	= $common_type;
+				} else {
+					println "2.7.8" if $debug;
+					$type_language_value	= $common_language;
+				}
+				
 			} elsif ($self->_is_graph_object($value)) {
-				println "2.8 TODO" if $debug;
+				println "2.8" if $debug;
+				if (exists $value->{'@index'}) {
+					println "2.8.1" if $debug;
+					push(@$containers, '@graph@index', '@graph@index@set');
+				}
+				
+				if (exists $value->{'@id'}) {
+					println "2.8.2" if $debug;
+					push(@$containers, '@graph@id', '@graph@id@set');
+				}
+				
+				println "2.8.3" if $debug;
+				push(@$containers, '@graph', '@graph@set', '@set');
+				
+				if (not exists $value->{'@index'}) {
+					println "2.8.4" if $debug;
+					push(@$containers, '@graph@index', '@graph@index@set');
+				}
+				
+				if (not exists $value->{'@id'}) {
+					println "2.8.5" if $debug;
+					push(@$containers, '@graph@id', '@graph@id@set');
+				}
+
+				println "2.8.6" if $debug;
+				push(@$containers, '@index', '@index@set');
+
+				println "2.8.7" if $debug;
+				$type_language		= '@type';
+				$type_language_value	= '@id';
 			} else {
 				println "2.9" if $debug;
 				if ($self->_is_value_object($value)) {
@@ -2859,7 +3154,11 @@ Returns the JSON-LD expansion of C<< $data >>.
 			println "2.10" if $debug;
 			push(@$containers, '@none');
 			
-			if ($self->processing_mode ne 'json-ld-1.0' and not(ref($value) eq 'HASH' and exists $value->{'@index'})) {
+# 			unless (ref($value) eq 'HASH') {
+# 				Carp::cluck "unexpected non-HASH in IRI Compaction: " . Dumper($value);
+# 			}
+			if ($self->processing_mode ne 'json-ld-1.0' and not(exists $value->{'@index'})) {
+# 			if ($self->processing_mode ne 'json-ld-1.0' and not(ref($value) eq 'HASH' and exists $value->{'@index'})) {
 				# TODO: spec is missing the ref 'HASH' check
 				println "2.11" if $debug;
 				push(@$containers, '@index', '@index@set');
@@ -2887,8 +3186,15 @@ Returns the JSON-LD expansion of C<< $data >>.
 			if (($type_language_value eq '@id' or $type_language_value eq '@reverse') and ref($value) eq 'HASH' and exists $value->{'@id'}) {
 				# TODO: spec is missing the ref 'HASH' check
 				println "2.16" if $debug;
-				println "2.16.1 TODO" if $debug;
-				println "2.16.2 TODO" if $debug;
+				my $compact_iri	= $self->_6_2_2_iri_compaction($activeCtx, $activeCtx, $value->{'@id'}, vocab => 1);
+				my $tdef	= $self->_ctx_term_defn($activeCtx, $compact_iri);
+				if ($tdef and $tdef->{'iri_mapping'} eq $value->{'@id'}) {
+					println "2.16.1" if $debug;
+					push(@$preferred_values, '@vocab', '@id', '@none');
+				} else {
+					println "2.16.2" if $debug;
+					push(@$preferred_values, '@id', '@vocab', '@none');
+				}
 			} else {
 				println "2.17" if $debug;
 				push(@$preferred_values, $type_language_value, '@none');
@@ -2907,11 +3213,11 @@ Returns the JSON-LD expansion of C<< $data >>.
 				push(@$preferred_values, @underscored);
 			}
 			
-			println "2.20 TODO" if $debug;
+			println "2.20" if $debug;
 			my $term	= $self->_4_4_2_term_selection($inverseCtx, $var, $containers, $type_language, $preferred_values);
 
 			if (defined($term)) {
-				println "2.21" if $debug;
+				println "2.21 returning: $term" if $debug;
 				return $term;
 			}
 		}
@@ -2939,7 +3245,8 @@ Returns the JSON-LD expansion of C<< $data >>.
 			my $tdef	= $self->_ctx_term_defn($activeCtx, $term);
 			my $iri_mapping	= $tdef->{'iri_mapping'};
 			my $iri_is_prefix	= _is_prefix_of($iri_mapping, $var);
-			if (not defined($tdef) or (($iri_mapping // '') eq $var) or not($iri_is_prefix) or not(exists $tdef->{'prefix_flag'} and $tdef->{'prefix_flag'})) {
+			
+			if (not(defined($tdef)) or (($iri_mapping // '') eq $var) or not($iri_is_prefix) or (not(exists $tdef->{'prefix_flag'}) or not($tdef->{'prefix_flag'}))) {
 				println "5.1" if $debug;
 				next;
 			}
@@ -2947,22 +3254,31 @@ Returns the JSON-LD expansion of C<< $data >>.
 			println "5.2" if $debug;
 			my $candidate	= join(':', $term, substr($var, length($iri_mapping)));
 			
-			my $shorter	= (length($candidate) < length($compact_iri));
-			my $less	= (($candidate cmp $compact_iri) == -1);
-			my $cand_tdef	= $self->_ctx_term_defn($activeCtx, $candidate);
-			my $no_tdef	= not($cand_tdef);
-			if (not(defined($compact_iri)) or ($shorter and $less and $no_tdef) or ($cand_tdef->{'iri_mapping'} eq $var and not defined($value))) {
-				println "5.3" if $debug;
+			println "5.3 candidate = $candidate" if $debug;
+			if (not defined($compact_iri)) {
+				println "5.3a" if $debug;
 				$compact_iri	= $candidate;
+			} else {
+				my $shorter	= (length($candidate) < length($compact_iri));
+				my $less	= ((length($candidate) == length($compact_iri)) and (($candidate cmp $compact_iri) == -1));
+				my $cand_tdef	= $self->_ctx_term_defn($activeCtx, $candidate);
+				my $no_tdef	= not($cand_tdef);
+				println "5.3b CANDIDATE: $candidate" if $debug;
+				if (($shorter or $less) and $no_tdef) {
+					println "5.3b" if $debug;
+					$compact_iri	= $candidate;
+				} elsif ($cand_tdef->{'iri_mapping'} eq $var and not defined($value)) {
+					println "5.3c" if $debug;
+					$compact_iri	= $candidate;
+				}
 			}
 		}
 		
 		if (defined($compact_iri)) {
-			println "6" if $debug;
+			println "6 returning: $compact_iri" if $debug;
 			return $compact_iri;
 		}
 		
-		# https://github.com/w3c/json-ld-api/issues/314
 		my $iri		= IRI->new($var);
 		my $scheme	= $iri->scheme;
 		my $scheme_tdef	= $self->_ctx_term_defn($activeCtx, $scheme);
@@ -2978,7 +3294,7 @@ Returns the JSON-LD expansion of C<< $data >>.
 			$var		= _make_relative_iri($base, $iri);
 		}
 
-		println "9" if $debug;
+		println "9 returning: $var" if $debug;
 		return $var;
 	}
 	
@@ -2993,9 +3309,10 @@ Returns the JSON-LD expansion of C<< $data >>.
 			println "ENTER    =================> _6_3_value_compaction('$activeProp')" if $debug;
 		}
 		my $__indent	= indent();
+		println(Data::Dumper->Dump([$value], [qw(value)])) if $debug;
 		
 		println "1" if $debug;
-		my $result	= $value;
+		my $result	= clone($value); # https://github.com/w3c/json-ld-api/issues/350
 		
 		println "2" if $debug;
 		my $tdef	= $self->_ctx_term_defn($activeCtx, $activeProp);
@@ -3028,7 +3345,11 @@ Returns the JSON-LD expansion of C<< $data >>.
 			}
 		} elsif (not _is_string($value->{'@value'})) {
 			println "7" if $debug;
-			if (exists $value->{'@index'} and $self->_cm_contains($container_mapping, '@index')) {
+			my @keys	= keys %$value;
+			if (scalar(@keys) == 1) {
+				# https://github.com/w3c/json-ld-api/issues/351
+				$result	= $value->{'@value'};
+			} elsif (exists $value->{'@index'} and $self->_cm_contains($container_mapping, '@index')) {
 				println "7.1" if $debug;
 				$result	= $value->{'@value'};
 			}
@@ -3055,6 +3376,9 @@ Returns the JSON-LD expansion of C<< $data >>.
 			println "9" if $debug;
 			my @keys	= keys %$result;
 			foreach my $k (@keys) {
+				my $__indent	= indent();
+				println "----------------" if $debug;
+				println "9 [$k]" if $debug;
 				my $ck	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $k, vocab => 1);
 				$result->{$ck}	= delete $result->{$k};
 			}
