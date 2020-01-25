@@ -25,6 +25,13 @@ This document describes JSONLD version 0.000_06
 This module implements part of the JSON-LD 1.1 standard for manipulating JSON data as
 linked data.
 
+This version (0.001) provides full support for JSON-LD 1.1 "Expansion" and "toRdf"
+(the latter primarily being useful through a subclass of JSON-LD, such s that
+provided by L<AtteanX::Parser::JSONLD>). Partial support for "Compaction" is
+provided, but contains many known deficiencies. Full support for "Compaction"
+will be forthcoming in a future release. No other JSON-LD transformation are
+supported at this time.
+
 =head1 METHODS
 
 =over 4
