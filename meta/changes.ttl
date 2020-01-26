@@ -31,9 +31,20 @@ my:project
 	:release				my:v_0-001 ;
 	.
 
+my:v_0-002
+	a					:Version ;
+	dc:issued			"2019-01-26"^^xsd:date ;
+	:revision			"0.002" ;
+	dcterms:replaces	my:v_0-001 ;
+	dcs:changeset [
+		dcs:item
+			[ a dcs:Update ; rdfs:label "Updated documentation." ]
+	]
+	.
+
 my:v_0-001
 	a					:Version ;
-	dc:issued			"2019-XX-XX"^^xsd:date ;
+	dc:issued			"2019-01-25"^^xsd:date ;
 	:revision			"0.001" ;
 	dcs:changeset [
 		dcs:item
