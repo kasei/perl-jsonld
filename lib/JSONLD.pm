@@ -102,12 +102,14 @@ NOTE: Support for JSON-LD Compaction is not fully supported in this version.
 			local($debug)	= 0;
 			$ctx	= $self->_4_1_2_ctx_processing($ctx, $context->{'@context'});
 		}
-		
+		println(Data::Dumper->Dump([$ctx], ['activeCtx'])) if $debug;
 		my $inverseCtx	= $self->_4_3_inverse_context_creation($ctx);
 		
 # 		warn "Compacting...";
 		my $c	= $self->_compact($ctx, $inverseCtx, undef, $expanded_input, %args);
-		if (scalar(%{ $context->{'@context'} || {} })) {
+
+		my $out_ctx	= $context->{'@context'} || {};
+		if ((ref($out_ctx) eq 'HASH' and scalar(@{[keys %$out_ctx]})) or (ref($out_ctx) eq 'ARRAY' and scalar(@$out_ctx))) {
 			$c->{'@context'}	= $context->{'@context'};
 		}
 		return $c;
@@ -1074,9 +1076,10 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			println "18" if $debug;
 			println "18.1"; # if $debug;
 			
-			println "18.2"; # if $debug;
-			$definition->{'iri_mapping'}	= $self->_5_2_2_iri_expansion($activeCtx, $term);
-			unless (_is_iri($definition->{'iri_mapping'})) {
+			println "18.2" if $debug;
+			$definition->{'iri_mapping'}	= $self->_5_2_2_iri_expansion($activeCtx, $term, vocab => 1);
+			unless ($self->_is_iri($definition->{'iri_mapping'})) {
+				println "18.2 invalid IRI: " . $definition->{'iri_mapping'};
 				die 'invalid IRI mapping';
 			}
 		} elsif ($term eq '@type') {
@@ -2713,6 +2716,8 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		
 		println "12" if $debug;
 		foreach my $expandedProperty (sort keys %$element) {
+			my $__indent	= indent();
+			println "----------------------------------------------------------------" if $debug;
 			my $expandedValue	= $element->{$expandedProperty};
 			println "12 [$expandedProperty]" if $debug;
 
@@ -2723,7 +2728,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				println "12.1" if $debug;
 				if (_is_string($expandedValue)) {
 					println "12.1.1" if $debug;
-					my $compactedValue	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $expandedValue);
+					my $compactedValue	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $expandedValue, vocab => 0);
 
 					println "12.1.2" if $debug;
 					my $alias	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $expandedProperty, vocab => 1);
@@ -2838,6 +2843,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			if (ref($expandedValue) eq 'ARRAY' and scalar(@$expandedValue) == 0) {
 				println "12.7" if $debug;
 				println "12.7.1" if $debug;
+				# https://github.com/w3c/json-ld-api/issues/357
 				my $item_active_property	= $self->_6_2_2_iri_compaction($activeCtx, $inverseCtx, $expandedProperty, value => $expandedValue, vocab => 1, 'reverse' => $insideReverse);
 
 				println "12.7.2" if $debug;
@@ -3008,7 +3014,9 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 						$map_key		= $expandedItem->{'@index'};
 					} elsif ($self->_cm_contains_any($container, '@index') and $index_key ne '@index') {
 						println "12.8.9.6" if $debug;
-						my @values	= @{ $compactedItem->{$container_key} || [] };
+						my @values	= (ref($compactedItem) eq 'ARRAY')
+							? @{ $compactedItem->{$container_key} || [] }
+							: ($compactedItem->{$container_key});
 						$map_key	= shift @values;
 						if (scalar(@values)) {
 							$compactedItem->{$container_key}	= [@values];
@@ -3287,8 +3295,8 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 # 			unless (ref($value) eq 'HASH') {
 # 				Carp::cluck "unexpected non-HASH in IRI Compaction: " . Dumper($value);
 # 			}
-			if ($self->processing_mode ne 'json-ld-1.0' and not(exists $value->{'@index'})) {
-# 			if ($self->processing_mode ne 'json-ld-1.0' and not(ref($value) eq 'HASH' and exists $value->{'@index'})) {
+# 			if ($self->processing_mode ne 'json-ld-1.0' and not(exists $value->{'@index'})) {
+			if ($self->processing_mode ne 'json-ld-1.0' and not(ref($value) eq 'HASH' and exists $value->{'@index'})) {
 				# TODO: spec is missing the ref 'HASH' check
 				println "2.11" if $debug;
 				push(@$containers, '@index', '@index@set');
@@ -3397,7 +3405,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				if (($shorter or $less) and $no_tdef) {
 					println "5.3b" if $debug;
 					$compact_iri	= $candidate;
-				} elsif ($cand_tdef->{'iri_mapping'} eq $var and not defined($value)) {
+				} elsif (exists $cand_tdef->{'iri_mapping'} and $cand_tdef->{'iri_mapping'} eq $var and not defined($value)) {
 					println "5.3c" if $debug;
 					$compact_iri	= $candidate;
 				}
@@ -3409,19 +3417,25 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			return $compact_iri;
 		}
 		
-		my $iri		= IRI->new($var);
-		my $scheme	= $iri->scheme;
-		my $scheme_tdef	= $self->_ctx_term_defn($activeCtx, $scheme);
-		if ($scheme_tdef and $scheme_tdef->{'prefix_flag'} and substr($var, length($scheme)+1, 2) ne '//') {
-			println "7" if $debug;
-			die 'IRI confused with prefix';
+		my $iri		= eval { IRI->new($var) };
+		unless ($@) {
+			my $scheme	= $iri->scheme;
+			my $scheme_tdef	= $self->_ctx_term_defn($activeCtx, $scheme);
+			if ($scheme_tdef and $scheme_tdef->{'prefix_flag'} and substr($var, length($scheme)+1, 2) ne '//') {
+				println "7" if $debug;
+				die 'IRI confused with prefix';
+			}
 		}
 
 		if (not $vocab) {
 			println "8" if $debug;
-			my $base	= (exists $activeCtx->{'@base'}) ? IRI->new($activeCtx->{'@base'}) : $self->base_iri;
-			my $iri		= IRI->new($var);
-			$var		= _make_relative_iri($base, $iri);
+			my $base	= eval { (exists $activeCtx->{'@base'}) ? IRI->new($activeCtx->{'@base'}) : $self->base_iri };
+			unless ($@) {
+				eval {
+					my $iri		= IRI->new($var);
+					$var		= _make_relative_iri($base, $iri);
+				};
+			}
 		}
 
 		println "9 returning: $var" if $debug;
@@ -3446,10 +3460,14 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		
 		println "2" if $debug;
 		my $tdef	= $self->_ctx_term_defn($activeCtx, $activeProp);
-		my $language	= $tdef->{'language_mapping'} // $self->default_language;
+		my $language	= exists $tdef->{'language_mapping'}
+						? $tdef->{'language_mapping'}
+						: $activeCtx->{'@language'};
 		
 		println "3" if $debug;
-		my $direction	= $tdef->{'direction_mapping'} // $self->default_base_direction;
+		my $direction	= exists $tdef->{'direction_mapping'}
+						? $tdef->{'direction_mapping'}
+						: $activeCtx->{'@direction'};
 
 		my @keys				= grep { $_ ne '@id' and $_ ne '@index' } keys %$value;
 		my $type_mapping		= $tdef->{'type_mapping'} // '';
@@ -3485,6 +3503,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			}
 		} else {
 			# https://github.com/w3c/json-ld-api/issues/313
+			println "maybe 8" if $debug;
 			my $vlang				= $value->{'@language'} // '';
 			my $lang_both_undef		= (not(defined($value->{'@language'})) and not(defined($language)));
 			my $lang_same			= ($lang_both_undef or (defined($vlang) and defined($language) and lc($vlang) eq lc($language)));
@@ -3493,13 +3512,31 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			my $dir_both_undef		= (not(defined($value->{'@direction'})) and not(defined($direction)));
 			my $dir_same			= ($dir_both_undef or ($dir eq $direction));
 			my $dir_not_present		= ((not defined($direction)) and (not exists $value->{'@direction'}));
-			if (($lang_same or $lang_not_present) and ($dir_same or $dir_not_present)) {
+			
+# 			if (($lang_same or $lang_not_present) and ($dir_same or $dir_not_present)) {
+# 				println "8" if $debug;
+# 				if ((exists $value->{'@index'} and $self->_cm_contains($container_mapping, '@index')) or not exists $value->{'@index'}) {
+# 					println "8.1" if $debug;
+# 					$result	= $value->{'@value'};
+# 				}
+# 			}
+			
+			my $lang_cmp_1	= (defined($language))
+				? lc($value->{'@language'}) eq $language
+				: not exists($value->{'@language'});
+			my $dir_cmp_1	= (defined($direction))
+				? $value->{'@direction'} eq $direction
+				: not exists($value->{'@direction'});
+			if ($lang_cmp_1 and $dir_cmp_1) {
 				println "8" if $debug;
 				if ((exists $value->{'@index'} and $self->_cm_contains($container_mapping, '@index')) or not exists $value->{'@index'}) {
 					println "8.1" if $debug;
 					$result	= $value->{'@value'};
 				}
 			}
+			
+			println "not 8" if $debug;
+			println(Data::Dumper->Dump([$lang_cmp_1, $language, $dir_cmp_1, $direction, $value], [qw(lang_cmp_1 language dir_cmp_1 direction value)])) if $debug;
 		}
 
 		if (ref($result) eq 'HASH') {
