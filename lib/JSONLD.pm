@@ -87,7 +87,8 @@ NOTE: Support for JSON-LD Compaction is not fully supported in this version.
 		my $self	= shift;
 		my $d		= shift;
 		my $context	= shift // {};
-		my %args	= @_;
+		my %args	= $self->_default_options(@_);
+		
 		
 		my $expanded_input	= do {
 			local($debug)	= 0;
@@ -245,6 +246,16 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		}
 		
 		return $expanded_output;
+	}
+	
+	sub _default_options {
+		my $self	= shift;
+		my %args	= @_;
+		$args{compactArrays}		//= 1;
+		$args{compactToRelative}	//= 1;
+		$args{ordered}				//= 0;
+		
+		return %args;
 	}
 	
 	sub _values_from_scalar_or_array {
