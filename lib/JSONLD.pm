@@ -96,12 +96,14 @@ NOTE: Support for JSON-LD Compaction is not fully supported in this version.
 		};
 		println(Data::Dumper->Dump([$context, $expanded_input], [qw(context expanded_input)])) if $debug;
 		
+		my $base	= undef;
 		my $ctx		= {
-			'@base' => $self->base_iri->abs, # TODO: not sure this follows the spec, but it's what makes test t0089 pass
+			'__original_base_URL'	=> $self->base_iri->abs, # TODO: set __original_base_URL
+			'@base'					=> $self->base_iri->abs, # TODO: not sure this follows the spec, but it's what makes test t0089 pass
 		};
 		if (ref($context) eq 'HASH' and exists $context->{'@context'}) {
 			local($debug)	= 0;
-			$ctx	= $self->_4_1_2_ctx_processing($ctx, $context->{'@context'});
+			$ctx	= $self->_4_1_2_ctx_processing($ctx, $context->{'@context'}, $base);
 		}
 		println(Data::Dumper->Dump([$ctx], ['activeCtx'])) if $debug;
 		my $inverseCtx	= $self->_4_3_inverse_context_creation($ctx);
@@ -130,17 +132,19 @@ initial active context for the expansion process.
 		my $d		= shift;
 		my %args	= @_;
 		
+		my $base	= undef;
 		my $ctx		= {
-			'@base' => $self->base_iri->abs, # TODO: not sure this follows the spec, but it's what makes test t0089 pass
+			'__original_base_URL'	=> $self->base_iri->abs, # TODO: set __original_base_URL
+			'@base' 				=> $self->base_iri->abs, # TODO: not sure this follows the spec, but it's what makes test t0089 pass
 		};
-		if (my $ec = $args{expandContext}) {
+		if (my $ec = $args{'expandContext'}) {
 			if (ref($ec) eq 'HASH' and exists $ec->{'@context'}) {
 				$ec	= $ec->{'@context'};
 			}
-			$ctx	= $self->_4_1_2_ctx_processing($ctx, $ec);
+			$ctx	= $self->_4_1_2_ctx_processing($ctx, $ec, $args{'expandContext'});
 		}
 # 		warn "Expanding...";
-		return $self->_expand($ctx, undef, $d);
+		return $self->_expand($ctx, undef, $d, $base);
 	}
 	
 =item C<< to_rdf( $data, [expandContext => $ctx] ) >>
@@ -226,7 +230,8 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		my $ctx		= shift // {};
 		my $prop	= shift;
 		my $d		= shift;
-		my $expanded_output	= $self->_5_1_2_expansion($ctx, $prop, $d, @_);
+		my $base	= shift;
+		my $expanded_output	= $self->_5_1_2_expansion($ctx, $prop, $d, $base, @_);
 		if (ref($expanded_output) eq 'HASH') {
 			my @keys	= keys %$expanded_output;
 			if (scalar(@keys) == 1 and $keys[0] eq '@graph') {
@@ -392,7 +397,22 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		my $req_profile	= shift;
 		my $ua		= LWP::UserAgent->new();
 		my $resp	= $ua->get($url);
-		return $resp;
+		my $doc	= {
+			document_url	=> $url,
+			response		=> $resp
+		};
+		
+		my $ct	= $resp->header('Content-Type');
+		if ($ct ne 'application/ld+json') {
+			if (my $link = $resp->header('Link')) {
+				if ($link =~ m{<([^>]+)>\s*;\s*rel="http://www.w3.org/ns/json-ld#context"}) {
+					$doc->{context_url}	= $1;
+					warn $1;
+				}
+			}
+		}
+		
+		return $doc;
 	}
 	
 	sub _cm_contains {
@@ -579,14 +599,14 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		my $self		= shift;
 		my $activeCtx	= shift;
 		my $localCtx	= shift;
+		my $base_iri	= shift;
 		local($Data::Dumper::Indent)	= 0;
 		println(Data::Dumper->Dump([$activeCtx], ['*activeCtx'])) if $debug;
 		println(Data::Dumper->Dump([$localCtx], ['*localCtx'])) if $debug;
-		my %args		= @_;
-		my $propagate	= $args{propagate} // 1;
-		my $remote_contexts	= $args{remote_contexts} // [];
+		my %args				= @_;
+		my $propagate			= $args{propagate} // 1;
+		my $remote_contexts		= $args{remote_contexts} // [];
 		my $override_protected	= $args{override_protected} // 0;
-		my $base_iri	= $args{base_iri} // $self->base_iri->abs;
 
 		println "1" if $debug;
 		my $result	= clone($activeCtx); # 1
@@ -619,23 +639,29 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 					my @prot	= $self->_ctx_protected_terms($activeCtx);
 					println "5.1.1 " . Data::Dumper->Dump([\@prot], ['protected_terms']) if $debug;
 					die 'invalid context nullification'; # 5.1.1
-				} else {
-					println "5.1.2 moving to next context" if $debug;
-					my $prev	= $result;
-					$result	= {
-						'@base' => $self->base_iri->abs, # TODO: not sure this follows the spec, but it's what makes test t0089 pass
-					};
-					if ($propagate) {
-						$result->{'previous_context'}	= $prev;
-					}
-					next;
 				}
+				println "5.1.2" if $debug;
+				my $prev	= $result;
+				Carp::cluck;
+				
+				$result	= {
+					'__original_base_URL'	=> $activeCtx->{'__original_base_URL'},
+					'@base' 				=> $activeCtx->{'__original_base_URL'},
+				};
+				if ($propagate) {
+					$result->{'previous_context'}	= $prev;
+				}
+
+				println "5.1.3 moving to next context" if $debug;
+				next;
 			}
 
-			if (not(ref($context))) {
+			if (_is_string($context)) {
 				println "5.2 $context" if $debug;
 				
 				println "5.2.1" if $debug;
+				Carp::cluck "resolving context URL against base: " . $base_iri . "\n";
+				
 				$context	= IRI->new(value => $context, base => $base_iri)->abs;
 				
 				if (scalar(@$remote_contexts) > $self->max_remote_contexts) {
@@ -644,29 +670,42 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				}
 				
 				my $context_url		= $context;
+				
+				my $document_url;
 				if (my $c = $self->parsed_remote_contexts->{$context}) {
 					println "5.2.3" if $debug;
-					$context	= $c;
+					($context, $document_url)	= @$c;
 				} else {
 					println "5.2.4 loading context from: $context_url" if $debug;
-					my $resp	= $self->_load_document($context_url, 'http://www.w3.org/ns/json-ld#context', 'http://www.w3.org/ns/json-ld#context');
+					my $doc			= $self->_load_document($context_url, 'http://www.w3.org/ns/json-ld#context', 'http://www.w3.org/ns/json-ld#context');
+					my $resp		= $doc->{response};
+					$document_url	= $doc->{document_url};
+					
 					if (not $resp->is_success) {
-						println "5.2.5 " . $resp->status_line if $debug;
+						println "5.2.4.1 " . $resp->status_line if $debug;
 						die 'loading remote context failed';
 					}
-					my $content	= $resp->decoded_content;
-					$context		= eval { decode_json(encode('UTF-8', $content))->{'@context'} };
+					my $content		= $resp->decoded_content;
+					my $jcontent	= eval { decode_json(encode('UTF-8', $content)) };
 					if ($@) {
-						println "5.2.5 $@" if $debug;
+						println "5.2.4.1 $@" if $debug;
 						die 'loading remote context failed';
 					}
-					$self->parsed_remote_contexts->{$context_url}	= $context;
+					if (not exists $jcontent->{'@context'}) {
+						println "5.2.4.2" if $debug;
+						die 'invalid remote context';
+					}
+
+					println "5.2.4.3" if $debug;
+					$context		= $jcontent->{'@context'};
+					
+					$self->parsed_remote_contexts->{$context_url}	= [$context, $document_url];
 				}
 
-				println "5.2.6" if $debug;
-				$result	= $self->_4_1_2_ctx_processing($result, $context, remote_contexts => clone($remote_contexts), base_iri => $context_url);
+				println "5.2.5" if $debug;
+				$result	= $self->_4_1_2_ctx_processing($result, $context, $document_url, remote_contexts => clone($remote_contexts));
 
-				println "5.2.7 moving to next context" if $debug;
+				println "5.2.6 moving to next context" if $debug;
 				next;
 			}
 
@@ -704,10 +743,11 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				}
 				
 				println "5.6.3 resolving \@import $value" if $debug;
-				my $import	= IRI->new(value => $value, base => $self->base_iri)->abs;
+				my $import	= IRI->new(value => $value, base => $base_iri)->abs;
 				
 				println "5.6.4 loading $import" if $debug;
-				my $resp	= $self->_load_document($import, 'http://www.w3.org/ns/json-ld#context', 'http://www.w3.org/ns/json-ld#context');
+				my $doc		= $self->_load_document($import, 'http://www.w3.org/ns/json-ld#context', 'http://www.w3.org/ns/json-ld#context');
+				my $resp	= $doc->{response};
 				
 				if (not $resp->is_success) {
 					println "5.6.5" if $debug;
@@ -839,7 +879,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				my $__indent	= indent();
 				println "5.13 [$key]" if $debug;
 				my $value	= $context->{$key};
-				$self->_4_2_2_create_term_definition($result, $context, $key, $defined, protected => $context->{'@protected'}, propagate => $propagate, base_iri => $base_iri); # 5.13
+				$self->_4_2_2_create_term_definition($result, $context, $key, $defined, $base_iri, protected => $context->{'@protected'}, propagate => $propagate); # 5.13
 			}
 		}
 
@@ -853,18 +893,18 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		my $activeCtx	= shift;
 		my $localCtx	= shift;
 		my $term		= shift;
-		my $defined		= shift // {};
+		my $defined		= shift;
+		my $base_iri	= shift;
 		println "ENTER    =================> _4_2_2_create_term_definition('$term')" if $debug;
 		my $__indent	= indent();
 		local($Data::Dumper::Indent)	= 0;
 		println(Data::Dumper->Dump([$activeCtx], ['*activeCtx'])) if $debug;
 		println(Data::Dumper->Dump([$localCtx], ['*localCtx'])) if $debug;
 		println(Data::Dumper->Dump([$defined], ['*defined'])) if $debug;
-		my %args		= @_;
-		my $protected	= $args{protected} // 0;
+		my %args				= @_;
+		my $protected			= $args{protected} // 0;
 		my $override_protected	= $args{override_protected} // 0;
-		my $propagate	= $args{propagate} // 1;
-		my $base_iri	= $args{base_iri} // $self->base_iri->abs;
+		my $propagate			= $args{propagate} // 1;
 		
 		# 4.2.2
 		if (exists ($defined->{$term})) {
@@ -932,64 +972,65 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		}
 		
 		println "10" if $debug;
-		my $definition	= {'__source_base_iri' => $base_iri};	# 10
+		my $definition	= {
+			'prefix'		=> 0,
+			'protected'		=> $protected,
+			'reverse'		=> 0,
+		};	# 10
 		
 		if ($value->{'@protected'}) {
 			println "11" if $debug;
 			$definition->{'protected'}	= 1; # 11
 			println "11 TODO processing mode of json-ld-1.0" if $debug;
-		} elsif (not exists $value->{'@protected'} and $protected) {
-			println "12" if $debug;
-			$definition->{'protected'}	= 1; # 12
 		}
 
 		if (exists $value->{'@type'}) {
-			# 13
-			println "13" if $debug;
-			my $type	= $value->{'@type'}; # 13.1
+			# 12
+			println "12" if $debug;
+			my $type	= $value->{'@type'}; # 12.1
 			if (ref($type)) {
-				println "13.1" if $debug;
-				die "invalid_type_mapping"; # 13.1
+				println "12.1" if $debug;
+				die "invalid_type_mapping"; # 12.1
 			}
 			
-			println "13.2" if $debug;
-			$type	= $self->_5_2_2_iri_expansion($activeCtx, $type, vocab => 1, localCtx => $localCtx, 'defined' => $defined); # 13.2
+			println "12.2" if $debug;
+			$type	= $self->_5_2_2_iri_expansion($activeCtx, $type, vocab => 1, localCtx => $localCtx, 'defined' => $defined); # 12.2
 			println(Data::Dumper->Dump([$type], ['type'])) if $debug;
 
 			if (($type eq '@json' or $type eq '@none') and $self->processing_mode eq 'json-ld-1.0') {
 				# https://github.com/w3c/json-ld-api/issues/259
-				println "13.3 " . Data::Dumper->Dump([$type], ['*type']) if $debug;
+				println "12.3 " . Data::Dumper->Dump([$type], ['*type']) if $debug;
 				die 'invalid type mapping';
 			}
 			
 			if ($type ne '@id' and $type ne '@vocab' and $type ne '@none' and $type ne '@json' and not($self->_is_abs_iri($type))) {
 				# TODO: handle case "nor, if processing mode is json-ld-1.1, @json nor @none"
-				println "13.4 " . Data::Dumper->Dump([$type], ['*type']) if $debug;
-				die 'invalid type mapping'; # 13.4
+				println "12.4 " . Data::Dumper->Dump([$type], ['*type']) if $debug;
+				die 'invalid type mapping'; # 12.4
 			}
 			
-			println "13.5" if $debug;
-			$definition->{'type_mapping'}	= $type; # 13.5
+			println "12.5" if $debug;
+			$definition->{'type_mapping'}	= $type; # 12.5
 		}
 		
 		if (exists $value->{'@reverse'}) {
-			# 14
-			println "14" if $debug;
+			# 13
+			println "13" if $debug;
 			if (exists $value->{'@id'} or exists $value->{'@nest'}) {
-				println "14.1" if $debug;
-				die 'invalid reverse property'; # 14.1
+				println "13.1" if $debug;
+				die 'invalid reverse property'; # 13.1
 			}
 			my $reverse	= $value->{'@reverse'};
 			if (ref($reverse)) {
-				println "14.2" if $debug;
-				die 'invalid IRI mapping'; # 14.2
+				println "13.2" if $debug;
+				die 'invalid IRI mapping'; # 13.2
 			}
 			if ($reverse =~ /^@[A-Za-z]+$/) {
-				println "14.3" if $debug;
-				die '@reverse value looks like a keyword: ' . $reverse; # 14.3
+				println "13.3" if $debug;
+				die '@reverse value looks like a keyword: ' . $reverse; # 13.3
 			} else {
-				 # 14.4
-				println "14.4" if $debug;
+				 # 13.4
+				println "13.4" if $debug;
 				my $m	= $self->_5_2_2_iri_expansion($activeCtx, $reverse, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
 				if (not($self->_is_abs_iri($m)) and $m !~ /^:/) {
 					die 'invalid IRI mapping';
@@ -998,8 +1039,8 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			}
 			
 			if (exists $value->{'@container'}) {
-				# 14.5
-				println "14.5" if $debug;
+				# 13.5
+				println "13.5" if $debug;
 				my $c	= $value->{'@container'};
 				if ($c ne '@set' and $c ne '@index' and not(defined($c))) {
 					die 'invalid reverse property';
@@ -1007,11 +1048,11 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				$definition->{'container_mapping'}	= [$c];
 			}
 			
-			println "14.6" if $debug;
-			$definition->{'reverse'}	= 1; # 14.6
+			println "13.6" if $debug;
+			$definition->{'reverse'}	= 1; # 13.6
 			
-			# 14.7
-			println "14.7 [setting defined{$term} = 1]" if $debug;
+			# 13.7
+			println "13.7 [setting defined{$term} = 1]" if $debug;
 			$activeCtx->{'terms'}{$term}	= $definition;
 			$defined->{$term}	= 1;
 			local($Data::Dumper::Indent)	= 0;
@@ -1019,28 +1060,25 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			return;
 		}
 
-		println "15" if $debug;
-		$definition->{'reverse'}	= 0; # 15
-		
 		if (exists $value->{'@id'} and (not(defined($value->{'@id'})) or $value->{'@id'} ne $term)) {
-			# 16
-			println "16" if $debug;
+			# 14
+			println "14" if $debug;
 			if (not defined($value->{'@id'})) {
-				println "16.1" if $debug;
+				println "14.1" if $debug;
 			} else {
-				println "16.2" if $debug;
+				println "14.2" if $debug;
 				my $id	= $value->{'@id'};
 					if (not _is_string($id)) {
-						println "16.2.1" if $debug;
-						die 'invalid IRI mapping'; # 16.2
+						println "14.2.1" if $debug;
+						die 'invalid IRI mapping'; # 14.2
 					}
 			
 					if (defined($id) and not exists $keywords{$id} and $id =~ /^@[A-Za-z]+$/) {
-						println "16.2.2" if $debug;
+						println "14.2.2" if $debug;
 						warn "create term definition encountered an \@id that looks like a keyword: $id\n";
 						return;
 					} else {
-						println "16.2.3" if $debug;
+						println "14.2.3" if $debug;
 						my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $id, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
 						if (not exists $keywords{$iri} and not $self->_is_abs_iri($iri) and $iri !~ /:/) {
 							die 'invalid IRI mapping';
@@ -1051,77 +1089,77 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 						$definition->{'iri_mapping'}	= $iri;
 					}
 					if ($term =~ /.:./ or index($term, '/') >= 0) {
-						println "16.2.4" if $debug;
-						println "16.2.4.1" if $debug;
+						println "14.2.4" if $debug;
+						println "14.2.4.1" if $debug;
 						$defined->{$term}	= 1;
 
 						my $iri	= $self->_5_2_2_iri_expansion($activeCtx, $term, vocab => 1, localCtx => $localCtx, 'defined' => $defined);
 						if ($iri ne $definition->{'iri_mapping'}) {
-							println "16.2.4.2" if $debug;
-							die 'invalid IRI mapping'; # 16.5 ; NOTE: the text here doesn't discuss what parameters to pass to IRI expansion
+							println "14.2.4.2" if $debug;
+							die 'invalid IRI mapping'; # 14.5 ; NOTE: the text here doesn't discuss what parameters to pass to IRI expansion
 						}
 					}
 			
 					if ($term !~ m{[:/]} and $simple_term and $definition->{'iri_mapping'} =~ m{[][:/?#@]$}) {
-						println "16.2.5" if $debug;
+						println "14.2.5" if $debug;
 						$definition->{'prefix_flag'}	= 1;
 					}
 	# 			}
 			}
 		} elsif ($term =~ /.:/) {
-			# 17
-			println "17" if $debug;
+			# 15
+			println "15" if $debug;
 			my ($prefix, $suffix)	= split(/:/, $term, 2);
 			if (exists $localCtx->{$prefix}) {
-				println "17.1" if $debug;
-				$self->_4_2_2_create_term_definition($activeCtx, $localCtx, $prefix, $defined); # 17.1
+				println "15.1" if $debug;
+				$self->_4_2_2_create_term_definition($activeCtx, $localCtx, $prefix, $defined); # 15.1
 			}
 			if (exists $activeCtx->{'terms'}{$prefix}) {
-				println "17.2" if $debug;
-				$definition->{'iri_mapping'}	= $activeCtx->{'terms'}{$prefix}{'iri_mapping'} . $suffix; # 17.2
+				println "15.2" if $debug;
+				$definition->{'iri_mapping'}	= $activeCtx->{'terms'}{$prefix}{'iri_mapping'} . $suffix; # 15.2
 			} else {
-				println "17.3" if $debug;
-				$definition->{'iri_mapping'}	= $term; # 17.3
+				println "15.3" if $debug;
+				$definition->{'iri_mapping'}	= $term; # 15.3
 			}
 		} elsif ($term =~ m{/}) {
-			println "18" if $debug;
-			println "18.1"; # if $debug;
+			println "16" if $debug;
+			println "16.1"; # if $debug;
 			
-			println "18.2" if $debug;
+			println "16.2" if $debug;
 			$definition->{'iri_mapping'}	= $self->_5_2_2_iri_expansion($activeCtx, $term, vocab => 1);
 			unless ($self->_is_iri($definition->{'iri_mapping'})) {
-				println "18.2 invalid IRI: " . $definition->{'iri_mapping'};
+				println "16.2 invalid IRI: " . $definition->{'iri_mapping'};
 				die 'invalid IRI mapping';
 			}
 		} elsif ($term eq '@type') {
-			println "19" if $debug;
-			$definition->{'iri_mapping'}	= '@type'; # 19
+			println "17" if $debug;
+			$definition->{'iri_mapping'}	= '@type'; # 17
 		} else {
-			# 20 ; NOTE: this section uses a passive voice "the IRI mapping of definition is set to ..." cf. 18 where it's active: "set the IRI mapping of definition to @type"
+			# 18 ; NOTE: this section uses a passive voice "the IRI mapping of definition is set to ..." cf. 18 where it's active: "set the IRI mapping of definition to @type"
 			if (exists $activeCtx->{'@vocab'}) {
-				println "20" if $debug;
+				println "18" if $debug;
 				$definition->{'iri_mapping'}	= $activeCtx->{'@vocab'} . $term;
 			} else {
-				println "20" if $debug;
+				println "18" if $debug;
 				die 'invalid IRI mapping';
 			}
 		}
 		
 		if (exists $value->{'@container'}) {
-			# TODO: 21
-			println "21" if $debug;
+			# TODO: 19
+			println "19" if $debug;
 
-			println "21.1" if $debug;
-			my $container	= $value->{'@container'}; # 21.1
+			println "19.1" if $debug;
+			my $container	= $value->{'@container'}; # 19.1
 
-			# 21.1 error checking
+			# 19.1 error checking
 			my %acceptable	= map { $_ => 1 } qw(@graph @id @index @language @list @set @type);
 			if (exists $acceptable{$container}) {
 			} elsif (ref($container) eq 'ARRAY') {
 				if (scalar(@$container) == 1) {
 					my ($c)	= @$container;
 					unless (exists $acceptable{$c}) {
-						println "21.1(a)" if $debug;
+						println "19.1(a)" if $debug;
 						die 'invalid container mapping';
 					}
 				} elsif (any { $_ =~ /^[@](id|index)$/ } @$container) { # any { $_ eq '@graph' } @$container
@@ -1129,98 +1167,100 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				} elsif (any { $_ eq '@set' } @$container and any { $_ =~ /^[@](index|graph|id|type|language)$/ } @$container) {
 					
 				} else {
-					println "21.1(b)" if $debug;
+					println "19.1(b)" if $debug;
 					die 'invalid container mapping';
 				}
 			} else {
-				println "21.1(c)" if $debug;
+				println "19.1(c)" if $debug;
 				die 'invalid container mapping';
 			}
 			
 			if ($self->processing_mode eq 'json-ld-1.0') {
 				if (any { $container eq $_ } qw(@graph @id @type) or ref($container)) {
-					println "21.2" if $debug;
+					println "19.2" if $debug;
 					die 'invalid container mapping';
 				}
 			}
 			
-			println "21.3" if $debug;
+			println "19.3" if $debug;
 			if (ref($container) eq 'ARRAY') {
-				$definition->{'container_mapping'}	= $container; # 21.3
+				$definition->{'container_mapping'}	= $container; # 19.3
 			} else {
-				$definition->{'container_mapping'}	= [$container]; # 21.3
+				$definition->{'container_mapping'}	= [$container]; # 19.3
 			}
 			
 			if ($container eq '@type') {
-				println "21.4" if $debug;
+				println "19.4" if $debug;
 				if (not defined($definition->{'type_mapping'})) {
-					println "21.4.1" if $debug;
+					println "19.4.1" if $debug;
 					$definition->{'type_mapping'}	= '@id';
 				}
 				
 				my $tm	= $definition->{'type_mapping'};
 				if ($tm ne '@id' and $tm ne '@vocab') {
-					println "21.4.2" if $debug;
+					println "19.4.2" if $debug;
 					die 'invalid type mapping';
 				}
 			}
 		}
 
 		if (exists $value->{'@index'}) {
-			println "22" if $debug;
+			println "20" if $debug;
 			my $container_mapping	= $definition->{'container_mapping'};
 			if ($self->processing_mode eq 'json-ld-1.0' or not $self->_cm_contains($container_mapping, '@index')) {
-				println "22.1" if $debug;
+				println "20.1" if $debug;
 				die 'invalid term definition';
 			}
 
-			println "22.2" if $debug;
+			println "20.2" if $debug;
 			my $index	= $value->{'@index'};
 			my $expanded	= $self->_5_2_2_iri_expansion($activeCtx, $index);
 			unless ($self->_is_iri($expanded)) {
 				die 'invalid term definition';
 			}
 			
-			println "22.3" if $debug;
+			println "20.3" if $debug;
 			$definition->{'index_mapping'}	= $index;
 		}
 
 		if (exists $value->{'@context'}) {
-			println "23" if $debug;
+			println "21" if $debug;
 			if ($self->processing_mode eq 'json-ld-1.0') {
-				println "23.1" if $debug;
+				println "21.1" if $debug;
 				die 'invalid term definition';
 			}
 
-			println "23.2" if $debug;
+			println "21.2" if $debug;
 			my $context	= $value->{'@context'};
 
-			println "23.3" if $debug;
-			$self->_4_1_2_ctx_processing($activeCtx, $context, override_protected => 1, base_iri => $base_iri); # discard result
+			println "21.3" if $debug;
+			$self->_4_1_2_ctx_processing($activeCtx, $context, $base_iri, override_protected => 1); # discard result
 # 			$self->_4_1_2_ctx_processing($activeCtx, $context, override_protected => 1); # discard result
 			
-			$definition->{'@context'}	= $context;	# Note: not sure about the spec text wording here: "Set the local context of definition to context." What is the "local context" of a definition?
+			println "21.4" if $debug;
+			$definition->{'@context'}	= $context;		# Note: not sure about the spec text wording here: "Set the local context of definition to context." What is the "local context" of a definition?
+			$definition->{'__base_URL'}	= $base_iri;
 		}
 
 		if (exists $value->{'@language'} and not exists $value->{'@type'}) {
-			println "24" if $debug;
-			println "24.1" if $debug;
+			println "22" if $debug;
+			println "22.1" if $debug;
 			my $language	= $value->{'@language'};
 			if (defined($language) and ref($language)) {
 				die 'invalid language mapping';
 			}
 			# TODO: validate language tag against BCP47
 
-			println "24.2" if $debug;
+			println "22.2" if $debug;
 			# TODO: normalize language tag
 			$definition->{'language_mapping'}	= $language;
 		}
 
 		if (exists $value->{'@direction'} and not exists $value->{'@type'}) {
-			println "25" if $debug;
+			println "23" if $debug;
 			my $direction	= $value->{'@direction'};
 
-			println "25.1" if $debug;
+			println "23.1" if $debug;
 			if (not(defined($direction))) {
 			} elsif ($direction ne 'ltr' and $direction ne 'rtl') {
 				die 'invalid base direction';
@@ -1230,13 +1270,13 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		}
 
 		if (exists $value->{'@nest'}) {
-			println "26" if $debug;
+			println "24" if $debug;
 			if ($self->processing_mode eq 'json-ld-1.0') {
-				println "26.1" if $debug;
+				println "24.1" if $debug;
 				die 'invalid term definition';
 			}
 			
-			println "26.2" if $debug;
+			println "24.2" if $debug;
 			my $nv	= $value->{'@nest'};
 			if (not(defined($nv)) or ref($nv)) {
 				die 'invalid @nest value';
@@ -1247,46 +1287,46 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		}
 
 		if (exists $value->{'@prefix'}) {
-			println "27" if $debug;
+			println "25" if $debug;
 			if ($self->processing_mode eq 'json-ld-1.0' or $term =~ m{[:/]}) {
-				println "27.1" if $debug;
-				die 'invalid term definition'; # 27.1
+				println "25.1" if $debug;
+				die 'invalid term definition'; # 25.1
 			}
 			
-			println "27.2" if $debug;
+			println "25.2" if $debug;
 			$definition->{'prefix_flag'}	= $value->{'@prefix'};
 			# TODO: check if this value is a boolean. if it is NOT, die 'invalid @prefix value';
 			
 			if ($definition->{'prefix_flag'} and exists $keywords{$definition->{'iri_mapping'}}) {
-				println "27.3" if $debug;
+				println "25.3" if $debug;
 				die 'invalid term definition';
 			}
 		}
 
 		my @keys	= grep { not m/^[@](id|reverse|container|context|language|nest|prefix|type|direction|protected|index)$/ } keys %$value;
 		if (scalar(@keys)) {
-			println "28 " . Data::Dumper->Dump([\@keys, $value], ['invalid_keys', 'value']) if $debug;
-			die 'invalid term definition'; # 28
+			println "26 " . Data::Dumper->Dump([\@keys, $value], ['invalid_keys', 'value']) if $debug;
+			die 'invalid term definition'; # 26
 		}
 		
 		if (not($override_protected) and $previous_defn->{'protected'}) {
-			# 29
-			println "29" if $debug;
+			# 27
+			println "27" if $debug;
 			my %cmp_a	= map { $_ => $definition->{$_} } grep { $_ ne 'protected' } keys %$definition;
 			my %cmp_b	= map { $_ => $previous_defn->{$_} } grep { $_ ne 'protected' } keys %$previous_defn;
 			my $j		= JSON->new->canonical(1);
 			if ($j->encode(\%cmp_a) ne $j->encode(\%cmp_b)) {
-				println "29.1" if $debug;
-				die 'protected term redefinition'; # 29.1
+				println "27.1" if $debug;
+				die 'protected term redefinition'; # 27.1
 			}
-			println "29.2" if $debug;
-			$definition	= $previous_defn; # 29.2
+			println "27.2" if $debug;
+			$definition	= $previous_defn; # 27.2
 		}
 		
-		println "30 [setting defined{$term} = 1]" if $debug;
-		println "30 setting term definition " . Data::Dumper->Dump([$definition], [$term]) if $debug;
-		$activeCtx->{'terms'}{$term}	= $definition; # 30
-		$defined->{$term}	= 1; # 30
+		println "28 [setting defined{$term} = 1]" if $debug;
+		println "28 setting term definition " . Data::Dumper->Dump([$definition], [$term]) if $debug;
+		$activeCtx->{'terms'}{$term}	= $definition; # 28
+		$defined->{$term}	= 1; # 28
 		local($Data::Dumper::Indent)	= 0;
 		println "returning from _4_2_2_create_term_definition: " . Dumper($activeCtx->{'terms'}{$term}) if $debug;
 		return;
@@ -1514,6 +1554,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		my $activeCtx	= shift;
 		my $activeProp	= shift;
 		my $element		= shift;
+		my $base_iri	= shift;
 		{
 			no warnings 'uninitialized';
 			println "ENTER    =================> _5_1_2_expansion('$activeProp')" if $debug;
@@ -1523,10 +1564,10 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		println(Data::Dumper->Dump([$activeCtx], ['activeCtx'])) if $debug;
 		println(Data::Dumper->Dump([$activeProp], ['activeProp'])) if $debug;
 		println(Data::Dumper->Dump([$element], ['element'])) if $debug;
-		my %args		= @_;
+		my %args			= @_;
 		my $frameExpansion	= $args{frameExpansion} // 0;
-		my $ordered		= $args{ordered} // 0;
-		my $fromMap		= $args{fromMap} // 0;
+		my $ordered			= $args{ordered} // 0;
+		my $fromMap			= $args{fromMap} // 0;
 		
 		unless (defined($element)) {
 			println "1 returning from _5_1_2_expansion: undefined element" if $debug;
@@ -1556,7 +1597,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			}
 			if ($property_scoped_ctx_defined) {
 				println "4.2" if $debug;
-				$activeCtx = $self->_4_1_2_ctx_processing($activeCtx, $property_scoped_ctx); # 4.2
+				$activeCtx = $self->_4_1_2_ctx_processing($activeCtx, $property_scoped_ctx, $tdef->{'__base_URL'}); # 4.2
 				println "after 4.2: " . Data::Dumper->Dump([$activeCtx], ['activeCtx']) if $debug;
 			}
 			
@@ -1576,7 +1617,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				# 5.2
 				println "5.2" if $debug;
 				println "5.2.1" if $debug;
-				my $expandedItem	= $self->_5_1_2_expansion($activeCtx, $activeProp, $item, fromMap => $fromMap); # 5.2.1
+				my $expandedItem	= $self->_5_1_2_expansion($activeCtx, $activeProp, $item, $base_iri, fromMap => $fromMap); # 5.2.1
 				println "5.2.1 expanded item = " . Dumper($expandedItem) if $debug;
 				
 				# NOTE: 5.2.2 "container mapping" is in the term definition for active property, right? The text omits the term definition reference.
@@ -1622,19 +1663,19 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		if ($property_scoped_ctx_defined) {
 			println "8" if $debug;
 			my %args;
-			if ($tdef and exists $tdef->{'__source_base_iri'}) {
-				$args{base_iri}	= $tdef->{'__source_base_iri'};
+			if ($tdef and exists $tdef->{'__base_URL'}) {
+				$args{base_iri}	= $tdef->{'__base_URL'};
 			}
 			local($Data::Dumper::Indent)	= 1;
 			println "before 8: " . Data::Dumper->Dump([$activeCtx, $property_scoped_ctx], [qw'activeCtx property_scoped_ctx']) if $debug;
-			$activeCtx = $self->_4_1_2_ctx_processing($activeCtx, $property_scoped_ctx, %args, override_protected => 1); # 8
+			$activeCtx = $self->_4_1_2_ctx_processing($activeCtx, $property_scoped_ctx, $tdef->{'__base_URL'}, %args, override_protected => 1); # 8
 			println "after 8: " . Data::Dumper->Dump([$activeCtx], ['activeCtx']) if $debug;
 		}
 		
 		if (exists $element->{'@context'}) {
 			println "9" if $debug;
 			my $c = $element->{'@context'};
-			$activeCtx = $self->_4_1_2_ctx_processing($activeCtx, $c); # 9
+			$activeCtx = $self->_4_1_2_ctx_processing($activeCtx, $c, $base_iri); # 9
 		}
 		
 		println "10" if $debug;
@@ -1666,7 +1707,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 					if (exists $tdef->{'@context'}) {
 						println "11.2" if $debug;
 						my $c = $tdef->{'@context'};
-						$activeCtx	= $self->_4_1_2_ctx_processing($activeCtx, $c, propagate => 0);
+						$activeCtx	= $self->_4_1_2_ctx_processing($activeCtx, $c, $tdef->{'__base_URL'}, propagate => 0);
 						local($Data::Dumper::Indent)	= 1;
 						println "11.2 " . Data::Dumper->Dump([$activeCtx], ['activeCtx']) if $debug;
 					}
@@ -1689,7 +1730,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		}
 		println "12 " . Data::Dumper->Dump([$input_type], ['*input_type']) if $debug;
 		
-		$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
+		$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $base_iri, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
 		println "after 13,14: " . Data::Dumper->Dump([$result], ['*result']) if $debug;
 
 		if (exists $result->{'@value'}) {
@@ -1789,6 +1830,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		my $activeCtx		= shift;
 		my $type_scoped_ctx	= shift;
 		my $result			= shift;
+		my $base_iri		= shift;
 		my $activeProp		= shift;
 		my $input_type		= shift;
 		my $nests			= shift;
@@ -1889,7 +1931,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 
 				if ($expandedProperty eq '@graph') {
 					println "13.4.5" if $debug;
-					my $v	= $self->_5_1_2_expansion($activeCtx, '@graph', $value, frameExpansion => $frameExpansion, ordered => $ordered);
+					my $v	= $self->_5_1_2_expansion($activeCtx, '@graph', $value, $base_iri, frameExpansion => $frameExpansion, ordered => $ordered);
 					$expandedValue	= (ref($v) eq 'ARRAY') ? $v : [$v];
 					println("========================================================================") if $debug;
 					println("========================================================================") if $debug;
@@ -1906,7 +1948,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 					}
 					
 					println "13.4.6.2" if $debug;
-					$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered);
+					$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, $base_iri, frameExpansion => $frameExpansion, ordered => $ordered);
 					unless (ref($expandedValue) eq 'ARRAY') {
 						$expandedValue	= [$expandedValue];
 					}
@@ -2005,7 +2047,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 					}
 
 					println "13.4.11.2" if $debug;
-					$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered);
+					$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, $base_iri, frameExpansion => $frameExpansion, ordered => $ordered);
 					if (ref($expandedValue) ne 'ARRAY') {
 						# https://github.com/w3c/json-ld-api/issues/310
 						$expandedValue	= [$expandedValue];
@@ -2015,7 +2057,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 
 				if ($expandedProperty eq '@set') {
 					println "13.4.12" if $debug;
-					$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered);
+					$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, $base_iri, frameExpansion => $frameExpansion, ordered => $ordered);
 					println "13.4.12 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 				}
 
@@ -2029,7 +2071,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 					}
 
 					println "13.4.13.2" if $debug;
-					$expandedValue	= $self->_5_1_2_expansion($activeCtx, '@reverse', $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.13.1
+					$expandedValue	= $self->_5_1_2_expansion($activeCtx, '@reverse', $value, $base_iri, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.13.1
 					println "13.4.13.2 " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 					
 					if (ref($expandedValue) eq 'HASH' and exists $expandedValue->{'@reverse'}) { # NOTE: spec text does not assert that expandedValue is a map
@@ -2100,7 +2142,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 					my %other_framings	= map { $_ => 1 } qw(@explicit @default @embed @explicit @omitDefault @requireAll);
 					if ($other_framings{$expandedProperty}) {
 						println "13.4.15" if $debug;
-						$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.15
+						$expandedValue	= $self->_5_1_2_expansion($activeCtx, $activeProp, $value, $base_iri, frameExpansion => $frameExpansion, ordered => $ordered); # 13.4.15
 						println "13.4.15 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 					}
 				}
@@ -2215,7 +2257,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 					my $index_tdef	= $self->_ctx_term_defn($map_context, $index);
 					if ($self->_cm_contains_any($container_mapping, '@type') and exists $index_tdef->{'@context'}) {
 						println "13.8.3.2" if $debug;
-						$map_context	= $self->_4_1_2_ctx_processing($map_context, $index_tdef->{'@context'});
+						$map_context	= $self->_4_1_2_ctx_processing($map_context, $index_tdef->{'@context'}, $index_tdef->{'__base_URL'});
 					} else {
 						println "13.8.3.3" if $debug;
 						$map_context	= $activeCtx;
@@ -2230,7 +2272,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 					}
 					
 					println "13.8.3.6" if $debug;
-					$index_value	= $self->_5_1_2_expansion($map_context, $key, $index_value, frameExpansion => $frameExpansion, ordered => $ordered);
+					$index_value	= $self->_5_1_2_expansion($map_context, $key, $index_value, $base_iri, frameExpansion => $frameExpansion, ordered => $ordered);
 					println(Data::Dumper->Dump([$index_value], ['*index_value'])) if $debug;
 					
 					println "13.8.3.7" if $debug;
@@ -2300,7 +2342,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				println "13.8 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 			} else {
 				println "13.9" if $debug;
-				$expandedValue	= $self->_5_1_2_expansion($activeCtx, $key, $value, frameExpansion => $frameExpansion, ordered => $ordered); # 13.9
+				$expandedValue	= $self->_5_1_2_expansion($activeCtx, $key, $value, $base_iri, frameExpansion => $frameExpansion, ordered => $ordered); # 13.9
 				println "13.9 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 			}
 		
@@ -2387,7 +2429,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				println "13.14 resulting in " . Data::Dumper->Dump([$expandedValue], ['*expandedValue']) if $debug;
 			}
 		}
-		$self->_5_1_2_expansion_step_14($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
+		$self->_5_1_2_expansion_step_14($activeCtx, $type_scoped_ctx, $result, $base_iri, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $element);
 	}
 
 	sub _5_1_2_expansion_step_14 {
@@ -2395,6 +2437,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		my $activeCtx		= shift;
 		my $type_scoped_ctx	= shift;
 		my $result			= shift;
+		my $base_iri		= shift;
 		my $activeProp		= shift;
 		my $input_type		= shift;
 		my $nests			= shift;
@@ -2440,7 +2483,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				
 				println "14.2.2 ENTER    =================> call to _5_1_2_expansion_step_13" if $debug;
 				my $__indent_2	= indent();
-				$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $nested_value); # 14.2.2
+				$self->_5_1_2_expansion_step_13($activeCtx, $type_scoped_ctx, $result, $base_iri, $activeProp, $input_type, $nests, $ordered, $frameExpansion, $nested_value); # 14.2.2
 
 			}
 		}
@@ -2677,7 +2720,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		if (exists $tdef->{'@context'}) {
 			println "6" if $debug;
 			println "6.1" if $debug;
-			$activeCtx = $self->_4_1_2_ctx_processing($activeCtx, $tdef->{'@context'}, override_protected => 1);
+			$activeCtx = $self->_4_1_2_ctx_processing($activeCtx, $tdef->{'@context'}, $tdef->{'__base_URL'}, override_protected => 1);
 			
 			println "6.2" if $debug;
 			$inverseCtx	= $self->_4_3_inverse_context_creation($activeCtx);
@@ -2717,7 +2760,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				my $tdef	= $self->_ctx_term_defn($type_scoped_ctx, $term);
 				if (exists $tdef->{'@context'}) {
 					println "11.1.1" if $debug;
-					$activeCtx	= $self->_4_1_2_ctx_processing($activeCtx, $tdef->{'@context'});
+					$activeCtx	= $self->_4_1_2_ctx_processing($activeCtx, $tdef->{'@context'}, $tdef->{'__base_URL'});
 
 					println "11.1.2" if $debug;
 					$inverseCtx	= $self->_4_3_inverse_context_creation($activeCtx);
