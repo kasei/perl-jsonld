@@ -323,53 +323,8 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		my $base	= shift;
 		my $rel		= shift;
 		println "Make relative IRI from: " . Data::Dumper->Dump([$base->abs, $rel->abs], [qw(base rel)]) if $debug;
-		if (($base->scheme // '') ne ($rel->scheme // '')) {
-			return $rel->abs;
-		}
-		
-		my @afields	= qw(host port user);
-		while (scalar(@afields)) {
-			my $f	= $afields[0];
-			no warnings 'uninitialized';
-			if ($base->$f() ne $rel->$f()) {
-				last;
-			}
-			shift(@afields);
-		}
-		
-		if (scalar(@afields)) {
-			my $i	= IRI->new($rel->abs);
-			$i->scheme('');
-			return $i->_abs; # bug in IRI prevents ->abs from working after changing components
-		}
-		
-		my $i	= IRI->new();
-		if ($rel->path eq $base->path) {
-			if ($rel->query eq $base->query) {
-				if ($rel->fragment eq $base->fragment) {
-					# <>
-				} else {
-					$i->fragment($rel->fragment);
-				}
-			} else {
-				if (defined($rel->query)) {
-					$i->query($rel->query);
-				}
-				if (defined($rel->fragment)) {
-					$i->fragment($rel->fragment);
-				}
-			}
-		} else {
-			# TODO: determine correct relative path
-			$i->path($rel->path);
-			if (defined($rel->query)) {
-				$i->query($rel->query);
-			}
-			if (defined($rel->fragment)) {
-				$i->fragment($rel->fragment);
-			}
-		}
-		return $i->_abs;
+		my $r		= $rel->rel($base)->abs;
+		return $r;
 	}
 	
 	sub _load_document {
