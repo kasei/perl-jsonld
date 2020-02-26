@@ -54,12 +54,14 @@ package JSONLD {
 	use File::Spec;
 	use File::Glob qw(bsd_glob);
 	use Encode qw(encode decode_utf8);
-	use Debug::ShowStuff qw(indent println);
 	use Data::Dumper;
 	use Clone 'clone';
 	use Carp qw(confess);
 	use B qw(svref_2object SVf_IOK SVf_POK SVf_NOK SVf_IOK);
 	use namespace::clean;
+# 	use Debug::ShowStuff qw(indent println);
+	sub println ($) {}
+	sub indent {}
 	
 	has 'base_iri' => (is => 'rw', required => 0, default => sub { IRI->new('http://example.org/') });
 	has 'processing_mode' => (is => 'ro', default => 'json-ld-1.1');
