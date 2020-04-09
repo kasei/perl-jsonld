@@ -7,7 +7,8 @@ use Test::Exception;
 use FindBin qw($Bin);
 use File::Glob qw(bsd_glob);
 use File::Spec;
-use JSON qw(decode_json);
+use JSON;
+use Data::Compare;
 use Data::Dumper;
 use JSONLD;
 use open ':std', ':encoding(UTF-8)';
@@ -38,7 +39,9 @@ sub _normalize {
 	my $data			= shift;
 	my $preserve_order	= shift || 0;
 	return $data unless (ref($data));
-	if (ref($data) eq 'ARRAY') {
+	if (ref($data) eq 'JSON::PP::Boolean') {
+		return ($data) ? 1 : 0;
+	} elsif (ref($data) eq 'ARRAY') {
 		my $j		= JSON->new->canonical(1);
 		my @v		= map { _normalize($_) } @$data;
 		unless ($preserve_order) {
@@ -111,9 +114,9 @@ foreach my $t (@$tests) {
 				}
 			}
 		} else {
-			my $got			= _normalize($j->encode($expanded));
+			my $got			= _normalize($expanded);
 			if ($positive) {
-				my $expected	= _normalize($j->encode(load_json($outfile)));
+				my $expected	= _normalize(load_json($outfile));
 				if ($debug) {
 					my @data	= (
 						['EXPECTED', $expected],
@@ -126,16 +129,16 @@ foreach my $t (@$tests) {
 						my $filename	= "/tmp/json-ld-$$-$name.out";
 						open(my $fh, '>', $filename) or die $!;
 						push(@files, $filename);
-						my $out	= Data::Dumper->Dump([$j->decode($data)], ["*$name"]);
+						my $out	= Data::Dumper->Dump([$data], ["*$name"]);
 						warn $out;
 						print {$fh} $out;
 						close($fh);
 					}
-					unless ($got eq $expected) {
+					unless (Compare($got, $expected)) {
 						system('/usr/local/bin/bbdiff', '--wait', '--resume', @files);
 					}
 				}
-				is($got, $expected, "$id: $name");
+				ok(Compare($got, $expected), "$id: $name");
 			} else {
 				if ($REPORT_NEGATIVE_TESTS) {
 					fail("$id: expected failure but found success");
