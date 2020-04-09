@@ -587,6 +587,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		my %args		= @_;
 		my $propagate	= $args{propagate} // 1;
 		my $remote_contexts	= $args{remote_contexts} // [];
+		my $validate_scoped_context	= $args{validate_scoped_context} // 1;
 		my $override_protected	= $args{override_protected} // 0;
 		my $base_iri	= $args{base_iri} // $self->base_iri->abs;
 
@@ -645,6 +646,15 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 					die 'context overflow';
 				}
 				
+				my %already	= map { $_ => 1 } @$remote_contexts;
+				if (not($validate_scoped_context) and $already{$context}) {
+					next;
+				}
+				
+				unless ($already{$context}) {
+					push(@$remote_contexts, $context);
+				}
+
 				my $context_url		= $context;
 				if (my $c = $self->parsed_remote_contexts->{$context}) {
 					println "5.2.3" if $debug;
@@ -666,7 +676,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				}
 
 				println "5.2.6" if $debug;
-				$result	= $self->_4_1_2_ctx_processing($result, $context, remote_contexts => clone($remote_contexts), base_iri => $context_url);
+				$result	= $self->_4_1_2_ctx_processing($result, $context, remote_contexts => clone($remote_contexts), validate_scoped_context => $validate_scoped_context, base_iri => $context_url);
 
 				println "5.2.7 moving to next context" if $debug;
 				next;
@@ -841,7 +851,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				my $__indent	= indent();
 				println "5.13 [$key]" if $debug;
 				my $value	= $context->{$key};
-				$self->_4_2_2_create_term_definition($result, $context, $key, $defined, protected => $context->{'@protected'}, propagate => $propagate, base_iri => $base_iri); # 5.13
+				$self->_4_2_2_create_term_definition($result, $context, $key, $defined, protected => $context->{'@protected'}, override_protected => $override_protected, remote_contexts => clone($remote_contexts), validate_scoped_context => $validate_scoped_context, base_iri => $base_iri); # 5.13
 			}
 		}
 
@@ -865,7 +875,8 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		my %args		= @_;
 		my $protected	= $args{protected} // 0;
 		my $override_protected	= $args{override_protected} // 0;
-		my $propagate	= $args{propagate} // 1;
+		my $remote_contexts		= $args{remote_contexts} // [];
+		my $validate_scoped_context	= $args{validate_scoped_context} // 1;
 		my $base_iri	= $args{base_iri} // $self->base_iri->abs;
 		
 		# 4.2.2
@@ -1198,7 +1209,8 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			my $context	= $value->{'@context'};
 
 			println "23.3" if $debug;
-			$self->_4_1_2_ctx_processing($activeCtx, $context, override_protected => 1, base_iri => $base_iri); # discard result
+# 			$self->_4_1_2_ctx_processing($activeCtx, $context, override_protected => 1, remote_contexts => clone($remote_contexts), validate_scoped_context => $validate_scoped_context, base_iri => $base_iri); # discard result
+			$self->_4_1_2_ctx_processing($activeCtx, $context, override_protected => 1, remote_contexts => clone($remote_contexts), validate_scoped_context => 0, base_iri => $base_iri); # discard result
 # 			$self->_4_1_2_ctx_processing($activeCtx, $context, override_protected => 1); # discard result
 			
 			$definition->{'@context'}	= $context;	# Note: not sure about the spec text wording here: "Set the local context of definition to context." What is the "local context" of a definition?
