@@ -63,7 +63,6 @@ package JSONLD {
 	sub println ($) {}
 	sub indent {}
 	
-	
 	has 'base_iri' => (is => 'rw', required => 0, default => sub { IRI->new('http://example.org/') });
 	has 'processing_mode' => (is => 'ro', default => 'json-ld-1.1');
 	has 'max_remote_contexts' => (is => 'rw', default => 10);
@@ -290,10 +289,11 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		my $v	= shift;
 		return 0 unless defined($v);
 		return 0 if ref($v);
-		my $sv	= svref_2object(\$v);
+		my $sv		= svref_2object(\$v);
 		my $flags	= $sv->FLAGS;
-		my $is_string	= $flags & SVf_POK;
-		return $is_string;
+		my $is_str	= $flags & SVf_POK;
+		my $is_num	= (($flags & SVf_NOK) or ($flags & SVf_IOK));
+		return ($is_str and not($is_num));
 	}
 	
 	sub _is_integer {
@@ -1641,7 +1641,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				$value	= [$value]; # 11.1
 			}
 			
-			my %tdefs	= map { $_ => $self->_ctx_term_defn($type_scoped_ctx, $_) } grep { _is_string($_) }@$value; # https://github.com/w3c/json-ld-api/issues/304
+			my %tdefs	= map { $_ => $self->_ctx_term_defn($type_scoped_ctx, $_) } grep { _is_string($_) } @$value; # https://github.com/w3c/json-ld-api/issues/304
 			foreach my $term (sort @$value) {
 				println "11.2 attempting with [$term]" if $debug;
 				if (_is_string($term)) {
