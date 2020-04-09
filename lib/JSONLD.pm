@@ -783,6 +783,8 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 					println "5.8.3" if $debug;
 					my $iri	= $self->_5_2_2_iri_expansion($result, $value, vocab => 1, documentRelative => 1);
 					$result->{'@vocab'}	= $iri;
+				} else {
+					die 'invalid vocab mapping';
 				}
 			}
 			
@@ -892,8 +894,13 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		}
 		
 		println "2 [setting defined{$term} = 0]" if $debug;
-		$defined->{$term}	= 0; # 2
-
+		my $term_copy = $term;
+		if ($term_copy eq '') {
+			die 'invalid term definition';
+		} else {
+			$defined->{$term}	= 0; # 2
+		}
+		
 		println "3" if $debug;
 		my $value	= clone($localCtx->{$term}); # 3
 		println "3 " . Data::Dumper->Dump([$value], ['value']) if $debug;
@@ -999,7 +1006,8 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			}
 			if ($reverse =~ /^@[A-Za-z]+$/) {
 				println "14.3" if $debug;
-				die '@reverse value looks like a keyword: ' . $reverse; # 14.3
+				warn '@reverse value looks like a keyword: ' . $reverse; # 14.3
+				return;
 			} else {
 				 # 14.4
 				println "14.4" if $debug;
@@ -1269,7 +1277,9 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			
 			println "27.2" if $debug;
 			$definition->{'prefix_flag'}	= $value->{'@prefix'};
-			# TODO: check if this value is a boolean. if it is NOT, die 'invalid @prefix value';
+			unless (JSON::is_bool($value->{'@prefix'})) {
+				die 'invalid @prefix value';
+			}
 			
 			if ($definition->{'prefix_flag'} and exists $keywords{$definition->{'iri_mapping'}}) {
 				println "27.3" if $debug;
