@@ -63,6 +63,7 @@ package JSONLD {
 	sub println ($) {}
 	sub indent {}
 	
+	
 	has 'base_iri' => (is => 'rw', required => 0, default => sub { IRI->new('http://example.org/') });
 	has 'processing_mode' => (is => 'ro', default => 'json-ld-1.1');
 	has 'max_remote_contexts' => (is => 'rw', default => 10);
@@ -1022,7 +1023,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 				# 14.5
 				println "14.5" if $debug;
 				my $c	= $value->{'@container'};
-				if ($c ne '@set' and $c ne '@index' and not(defined($c))) {
+				if ($c ne '@set' and $c ne '@index' and defined($c)) {
 					die 'invalid reverse property';
 				}
 				$definition->{'container_mapping'}	= [$c];
@@ -1197,8 +1198,8 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 
 			println "22.2" if $debug;
 			my $index	= $value->{'@index'};
-			my $expanded	= $self->_5_2_2_iri_expansion($activeCtx, $index);
-			unless ($self->_is_iri($expanded)) {
+			my $expanded	= $self->_5_2_2_iri_expansion($activeCtx, $index, vocab => 1);
+			unless ($self->_is_abs_iri($expanded)) {
 				die 'invalid term definition';
 			}
 			
@@ -1670,9 +1671,12 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			my $value	= $element->{$key};
 			# 11
 			println "11 [$key]" if $debug;
-			unless ('@type' eq $self->_5_2_2_iri_expansion($activeCtx, $key, vocab => 1)) {
-				println "[skipping key $key in search of \@type]" if $debug;
-				next;
+			{
+				no warnings 'uninitialized';
+				unless ('@type' eq $self->_5_2_2_iri_expansion($activeCtx, $key, vocab => 1)) {
+					println "[skipping key $key in search of \@type]" if $debug;
+					next;
+				}
 			}
 
 			println "11 body [$key]" if $debug;
@@ -1706,6 +1710,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		my $input_type	= '';
 		foreach my $key (sort keys %$element) {
 			my $expandedKey	= $self->_5_2_2_iri_expansion($activeCtx, $key);
+			no warnings 'uninitialized';
 			if ($expandedKey eq '@type') {
 				$input_type	= $self->_5_2_2_iri_expansion($activeCtx, $element->{$key});
 				last;
@@ -2290,7 +2295,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 
 							if ($self->_is_value_object($item)) {
 								my @keys	= sort keys %$item;
-								if (scalar(@keys) != 2) {
+								if (scalar(@keys) > 1) {
 									die 'invalid value object';
 								}
 							}
