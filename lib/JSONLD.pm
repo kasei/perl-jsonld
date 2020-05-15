@@ -1642,7 +1642,9 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			}
 			
 			my %tdefs	= map { $_ => $self->_ctx_term_defn($type_scoped_ctx, $_) } grep { _is_string($_) } @$value; # https://github.com/w3c/json-ld-api/issues/304
-			foreach my $term (sort @$value) {
+			
+			# the clone here is necessary, because the implicit lexicographic sort will add the POK flag to integer scalars that would otherwise be just IOK. this causes the resulting JSON serialization to treat the scalar as a string.
+			foreach my $term (sort @{clone($value)}) {
 				println "11.2 attempting with [$term]" if $debug;
 				if (_is_string($term)) {
 					my $tdef	= $tdefs{$term};
@@ -3945,7 +3947,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		
 		if (defined($datatype) and $datatype eq '@json') {
 			println "8" if $debug;
-			$value		= decode_utf8(JSON->new->utf8->allow_nonref->encode($value));
+			$value		= decode_utf8(JSON->new->utf8->allow_nonref->canonical(1)->encode($value));
 			$datatype	= 'http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON';
 		}
 		
