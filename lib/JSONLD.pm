@@ -4,7 +4,7 @@ JSONLD - A toolkit for transforming JSON-LD data.
 
 =head1 VERSION
 
-This document describes JSONLD version 0.003.
+This document describes JSONLD version 0.004.
 
 =head1 SYNOPSIS
 
@@ -25,7 +25,7 @@ This document describes JSONLD version 0.003.
 This module implements part of the JSON-LD 1.1 standard for manipulating JSON
 data as linked data.
 
-This version (0.003) provides full support for the JSON-LD 1.1 "Expansion" and
+This version (0.004) provides full support for the JSON-LD 1.1 "Expansion" and
 "toRdf" transformations (the latter primarily being useful through a subclass
 of JSON-LD, such as that provided by L<AtteanX::Parser::JSONLD>).
 Partial support for the "Compaction" transformation is provided, but it
@@ -42,7 +42,7 @@ No other JSON-LD transformation are supported at this time.
 package JSONLD {
 	use v5.14;
 	use autodie;
-	our $VERSION	= '0.003';
+	our $VERSION	= '0.004';
 	use utf8;
 	use Moo;
 	use LWP;
@@ -1642,7 +1642,9 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 			}
 			
 			my %tdefs	= map { $_ => $self->_ctx_term_defn($type_scoped_ctx, $_) } grep { _is_string($_) } @$value; # https://github.com/w3c/json-ld-api/issues/304
-			foreach my $term (sort @$value) {
+			
+			# the clone here is necessary, because the implicit lexicographic sort will add the POK flag to integer scalars that would otherwise be just IOK. this causes the resulting JSON serialization to treat the scalar as a string.
+			foreach my $term (sort @{clone($value)}) {
 				println "11.2 attempting with [$term]" if $debug;
 				if (_is_string($term)) {
 					my $tdef	= $tdefs{$term};
@@ -3945,7 +3947,7 @@ See L<AtteanX::Parser::JSONLD> for an API that provides this functionality.
 		
 		if (defined($datatype) and $datatype eq '@json') {
 			println "8" if $debug;
-			$value		= decode_utf8(JSON->new->utf8->allow_nonref->encode($value));
+			$value		= decode_utf8(JSON->new->utf8->allow_nonref->canonical(1)->encode($value));
 			$datatype	= 'http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON';
 		}
 		

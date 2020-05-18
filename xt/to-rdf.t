@@ -159,8 +159,8 @@ sub load_nq {
 sub load_json {
 	my $file	= shift;
 	open(my $fh, '<:utf8', $file);
-	my $j	= JSON->new();
-	return $j->utf8(0)->decode(do { local($/); <$fh> });
+	my $j	= JSON->new()->canonical(1);
+	return $j->decode(do { local($/); <$fh> });
 }
 
 my $component	= 'toRdf';
@@ -176,7 +176,7 @@ my $base	= IRI->new(value => $d->{'baseIri'} // 'http://example.org/');
 foreach my $t (@$tests) {
 	my $id		= $t->{'@id'};
 	next unless ($id =~ $PATTERN);
-	my $test_iri	= $jj->expand($t, expandContext => ['context.jsonld', {'@base' => $base_url}])->[0]{'@id'};
+	my $test_iri	= $jj->expand($t, expandContext => [{'@base' => $base_url}, 'context.jsonld'])->[0]{'@id'};
 
 	my $input	= $t->{'input'};
 	my $expect	= $t->{'expect'} // '';
@@ -195,6 +195,9 @@ foreach my $t (@$tests) {
 
 	my %expandArgs;
 	if (my $expand = $options->{'expandContext'}) {
+		my $base	= IRI->new(value => 'file://' . $manifest);
+		my $iri		= IRI->new(value => $expand, base => $base);
+		$expand		= $iri->abs;
 		$expandArgs{'expandContext'}	= $expand;
 		warn "CONTEXT: $expand\n" if ($debug);
 	}

@@ -103,7 +103,7 @@ my $base	= IRI->new(value => $d->{'baseIri'} // 'http://example.org/');
 foreach my $t (@$tests) {
 	my $id		= $t->{'@id'};
 	next unless ($id =~ $PATTERN);
-	my $test_iri	= $jj->expand($t, expandContext => ['context.jsonld', {'@base' => $base_url}])->[0]{'@id'};
+	my $test_iri	= $jj->expand($t, expandContext => [{'@base' => $base_url}, 'context.jsonld'])->[0]{'@id'};
 	
 	my $input	= $t->{'input'};
 	my $expect	= $t->{'expect'} // '';
