@@ -28,7 +28,19 @@ my:project
 	:bug-database			<https://github.com/kasei/perl-jsonld/issues> ;
 	doap:download-page		<https://metacpan.org/release/JSONLD/> ;
 	doap:download-mirror	<http://kasei.us/code/files/> ;
-	:release				my:v_0-001 , my:v_0-002 , my:v_0-003 , my:v_0-004 ;
+	:release				my:v_0-001 , my:v_0-002 , my:v_0-003 , my:v_0-004 , my:v_0-005 ;
+	.
+
+my:v_0-005
+	a					:Version ;
+	dc:issued			"2020-12-12"^^xsd:date ;
+	:revision			"0.005" ;
+	dcterms:replaces	my:v_0-004 ;
+	dcs:changeset [
+		dcs:item
+			[ a dcs:Update ; rdfs:label "Fix package metadata (#4)." ] ,
+			[ a dcs:Update ; rdfs:label "Fix version references in README.md (#5)." ] 
+	]
 	.
 
 my:v_0-004
